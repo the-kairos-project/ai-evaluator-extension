@@ -1,15 +1,18 @@
 import { Record as AirtableRecord, Table as AirtableTable } from "@airtable/blocks/models";
 import { Preset } from "./preset";
-import { Dispatch, SetStateAction } from "react";
 import { Prompt, getChatCompletion } from "./getChatCompletion";
 import pRetry from 'p-retry'
 
-export const evaluateApplicants = async (applicants: AirtableRecord[], preset: Preset, setProgress: Dispatch<SetStateAction<number>>): Promise<Record<string, unknown>[]> => {
+type SetProgress = (updater: (prev: number) => number) => void;
+
+export const evaluateApplicants = async (applicants: AirtableRecord[], preset: Preset, setProgress: SetProgress): Promise<Record<string, unknown>[]> => {
     return Promise.all(applicants.map(async (applicant) => {
-        const result: Record<string, unknown> = await evaluateApplicant(convertToPlainRecord(applicant, preset), preset)
+        const innerSetProgress: SetProgress = (updater) => {
+            setProgress(progress => progress + (1 / applicants.length) * updater(0))
+        }
+        const result: Record<string, unknown> = await evaluateApplicant(convertToPlainRecord(applicant, preset), preset, innerSetProgress)
         result[preset.evaluationApplicantField] = [{ id: applicant.id }];
         result[preset.evaluationEvaluatorField] = [{ id: preset.evaluatorRecordId }];
-        setProgress(progress => progress + (1 / applicants.length))
         return result
     }))
 }
@@ -33,7 +36,7 @@ const stringifyApplicantForLLM = (applicant: Record<string, string>): string => 
       .join('\n\n');
 }
 
-const evaluateApplicant = async (applicant: Record<string, string>, preset: Preset): Promise<Record<string, number | string>> => {
+const evaluateApplicant = async (applicant: Record<string, string>, preset: Preset, setProgress: SetProgress): Promise<Record<string, number | string>> => {
     let logs = "";
     const applicantString = stringifyApplicantForLLM(applicant)
     const itemResults = await Promise.all(preset.evaluationFields.map(async ({ fieldId, criteria }) => {
@@ -47,7 +50,8 @@ const evaluateApplicant = async (applicant: Record<string, string>, preset: Pres
             async () => evaluateItem(applicantString, criteria),
             { onFailedAttempt: (error) => console.error(`Failed processing record on attempt ${error.attemptNumber} for criteria ${fieldId}: `, error) },
         )
-        logs += `# ${fieldId}\n\n` + transcript;
+        logs += `# ${fieldId}\n\n` + transcript + '\n\n';
+        setProgress(prev => prev + (1 / preset.evaluationFields.length))
         return [fieldId, ranking] as const
     }));
     
