@@ -86,8 +86,10 @@ export const PresetManager = () => {
   const selectedPreset = useSelectedPreset();
   const [editPresetDialogOpen, setEditPresetDialogOpen] = useState(false);
   const [editPresetName, setEditPresetName] = useState(selectedPreset.name);
+  const [editPresetJson, setEditPresetJson] = useState('');
   const openEditPresetDialog = () => {
     setEditPresetName(selectedPreset.name);
+    setEditPresetJson('');
     setEditPresetDialogOpen(true);
   }
   const closeEditPresetDialog = () => {
@@ -121,7 +123,6 @@ export const PresetManager = () => {
           <Dialog.CloseButton />
           <div className="flex">
             <Heading>Edit preset</Heading>
-            <div className="w-2" />
           </div>
           <FormField label="Name">
             <Input
@@ -130,11 +131,22 @@ export const PresetManager = () => {
               onChange={(e) => setEditPresetName(e.target.value)}
             />
           </FormField>
+          <FormField label="(advanced) Overwrite JSON">
+            <Input
+              autoFocus={true}
+              value={editPresetJson}
+              onChange={(e) => setEditPresetJson(e.target.value)}
+            />
+          </FormField>
           <div className="flex w-full justify-end">
             <Button
               onClick={() => {
                 closeEditPresetDialog();
-                upsertPreset({ ...selectedPreset, name: editPresetName }, selectedPreset.name)
+                if (editPresetJson) {
+                  upsertPreset(JSON.parse(editPresetJson), selectedPreset.name)
+                } else {
+                  upsertPreset({ ...selectedPreset, name: editPresetName }, selectedPreset.name)
+                }
               }}
             >
               Save
