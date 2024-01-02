@@ -3,7 +3,7 @@
         "start": "npm run start:applications",
         "start:applications": "block run --remote applications",
         "type-check": "tsc --noEmit --esModuleInterop --jsx react frontend/**.tsx lib/**.ts",
-        "test": "jest",
+        "test": "jest --passWithNoTests",
         "lint": "eslint --ext .js,.jsx,.ts,.tsx frontend lib",
         "deploy": "node deploy.js"
     },
