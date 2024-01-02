@@ -19,10 +19,9 @@ import { evaluateApplicants } from "../lib/evaluateApplicants";
 
 const renderPreviewText = (numberOfApplicants: number, numberOfEvaluationCriteria: number) => {
   const numberOfItems = numberOfApplicants * numberOfEvaluationCriteria;
-  // TODO: improve time and cost estimates based on empirical testing
-  const timeEstimate = (numberOfItems * 3 / 60).toFixed(1);
-  const costEstimate = (numberOfItems * 0.002).toFixed(2);
-  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated time: ${timeEstimate} min. Estimated cost: £${costEstimate}. To cancel, please close the page.`
+  const timeEstimate = (numberOfItems * 18 / 60).toFixed(1); // speed roughly for gpt-4-1106-preview
+  const costEstimate = (numberOfItems * 0.011).toFixed(2); // pricing roughly for gpt-4-1106-preview
+  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated time: ${timeEstimate} min. Estimated cost: £${costEstimate}. To cancel, please close the entire browser tab.`
 }
 
 export const MainPage = () => {
@@ -51,7 +50,7 @@ export const MainPage = () => {
       const evaluationRecords = await evaluateApplicants(applicantRecords.records, preset, setProgress)
       setResult(`Evaluated applicants, creating evaluations in table...`)
       await evaluationTable.createRecordsAsync(evaluationRecords.map(record => ({ fields: record })));
-      setResult(`Successfully created ${evaluationRecords.length} evaluations`)
+      setResult(`Successfully created ${evaluationRecords.length} evaluation(s)`)
     } catch (error) {
       const errorMessage = 'Error: ' + (error instanceof Error ? error.message : String(error))
       setResult(errorMessage);

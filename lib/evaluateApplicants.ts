@@ -75,9 +75,9 @@ const evaluateItem = async (applicantString: string, criteriaString: string): Pr
         { role: 'user', content: applicantString },
         { role: 'system', content: `Evaluate the application above, based on the following rubric: ${criteriaString}
 
-You should interpolate between values if any are missing on the scale. You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved.
+You should interpolate between values if any are missing on the scale. You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
 
-Explain your reasoning for the rating. Then afterwards output your final answer by stating 'FINAL_RANKING = ' and then the relevant integer between the minimum and maximum values int he rubric.` },
+Before stating your rating, first explain your reasoning thinking step by step. Then afterwards output your final answer by stating 'FINAL_RANKING = ' and then the relevant integer between the minimum and maximum values int he rubric.` },
     ];
     const completion = await getChatCompletion(prompt);
     const transcript = [...prompt, { role: 'assistant', content: completion }]
