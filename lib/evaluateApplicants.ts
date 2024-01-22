@@ -64,11 +64,15 @@ const evaluateApplicant = async (applicant: Record<string, string>, preset: Pres
 
 // TODO: test if returning response in JSON is better
 const extractFinalRanking = (text: string, rankingKeyword = 'FINAL_RANKING'): number => {
-    const regex = new RegExp(`${rankingKeyword}\\s*=\\s*(\\d+)`);
+    const regex = new RegExp(`${rankingKeyword}\\s*=\\s*([\\d\\.]+)`);
     const match = text.match(regex);
   
     if (match && match[1]) {
-      return parseInt(match[1]);
+        const asInt = parseInt(match[1])
+        if (Math.abs(asInt - parseFloat(match[1])) > 0.01) {
+            throw new Error(`Non-integer final ranking: ${match[1]} (${rankingKeyword})`);
+        }
+        return parseInt(match[1]);
     }
   
     throw new Error(`Missing final ranking (${rankingKeyword})`);
@@ -79,7 +83,7 @@ const evaluateItem = async (applicantString: string, criteriaString: string): Pr
         { role: 'user', content: applicantString },
         { role: 'system', content: `Evaluate the application above, based on the following rubric: ${criteriaString}
 
-You should interpolate between values if any are missing on the scale. You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
+You should interpolate between values if any are missing on the scale (but only to integers). You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
 
 Before stating your rating, first explain your reasoning thinking step by step. Then afterwards output your final answer by stating 'FINAL_RANKING = ' and then the relevant integer between the minimum and maximum values int he rubric.` },
     ];
