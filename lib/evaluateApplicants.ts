@@ -5,8 +5,11 @@ import pRetry from 'p-retry'
 
 type SetProgress = (updater: (prev: number) => number) => void;
 
-export const evaluateApplicants = async (applicants: AirtableRecord[], preset: Preset, setProgress: SetProgress): Promise<Record<string, unknown>[]> => {
-    return Promise.all(applicants.map(async (applicant) => {
+/**
+ * @returns array of promises, each expected to return an evaluation
+ */
+export const evaluateApplicants = (applicants: AirtableRecord[], preset: Preset, setProgress: SetProgress): Promise<Record<string, unknown>>[] => {
+    return applicants.map(async (applicant) => {
         const innerSetProgress: SetProgress = (updater) => {
             setProgress(progress => progress + (1 / applicants.length) * updater(0))
         }
@@ -14,7 +17,7 @@ export const evaluateApplicants = async (applicants: AirtableRecord[], preset: P
         result[preset.evaluationApplicantField] = [{ id: applicant.id }];
         result[preset.evaluationEvaluatorField] = [{ id: preset.evaluatorRecordId }];
         return result
-    }))
+    })
 }
 
 const convertToPlainRecord = (applicant: AirtableRecord, preset: Preset): Record<string, string> => {
@@ -37,7 +40,7 @@ const stringifyApplicantForLLM = (applicant: Record<string, string>): string => 
 }
 
 const evaluateApplicant = async (applicant: Record<string, string>, preset: Preset, setProgress: SetProgress): Promise<Record<string, number | string>> => {
-    let logs = "";
+    const logsByField = {};
     const applicantString = stringifyApplicantForLLM(applicant)
     const itemResults = await Promise.all(preset.evaluationFields.map(async ({ fieldId, criteria }) => {
         // Retry-wrapper around processApplicationPrediction
@@ -50,13 +53,17 @@ const evaluateApplicant = async (applicant: Record<string, string>, preset: Pres
             async () => evaluateItem(applicantString, criteria),
             { onFailedAttempt: (error) => console.error(`Failed processing record on attempt ${error.attemptNumber} for criteria ${fieldId}: `, error) },
         )
-        logs += `# ${fieldId}\n\n` + transcript + '\n\n';
+        logsByField[fieldId] = `# ${fieldId}\n\n` + transcript;
         setProgress(prev => prev + (1 / preset.evaluationFields.length))
         return [fieldId, ranking] as const
     }));
     
     const combined: Record<string, number | string> = Object.fromEntries(itemResults);
     if (preset.evaluationLogsField) {
+        // We do this so that the logs are always in the same order, so it's easier to read over them and compare applicants
+        const logs = preset.evaluationFields.map(({ fieldId }) => {
+            return logsByField[fieldId];
+        }).join('\n\n');
         combined[preset.evaluationLogsField] = logs;
     }
     return combined;

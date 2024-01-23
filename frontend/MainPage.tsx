@@ -16,12 +16,13 @@ import { Preset, upsertPreset, useSelectedPreset } from "../lib/preset";
 import { globalConfig } from "@airtable/blocks";
 import { Field, FieldType } from "@airtable/blocks/models";
 import { evaluateApplicants } from "../lib/evaluateApplicants";
+import pRetry from "p-retry";
 
 const renderPreviewText = (numberOfApplicants: number, numberOfEvaluationCriteria: number) => {
   const numberOfItems = numberOfApplicants * numberOfEvaluationCriteria;
-  const timeEstimate = (numberOfItems * 18 / 60).toFixed(1); // speed roughly for gpt-4-1106-preview
-  const costEstimate = (numberOfItems * 0.011).toFixed(2); // pricing roughly for gpt-4-1106-preview
-  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated time: ${timeEstimate} min. Estimated cost: £${costEstimate}. To cancel, please close the entire browser tab.`
+  const timeEstimateMins = (numberOfItems * 0.9 / 60).toFixed(1); // speed roughly for gpt-4-1106-preview, at 30 request concurrency
+  const costEstimateGbp = (numberOfItems * 0.011).toFixed(2); // pricing roughly for gpt-4-1106-preview
+  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated time: ${timeEstimateMins} min. Estimated cost: £${costEstimateGbp}. To cancel, please close the entire browser tab.`
 }
 
 export const MainPage = () => {
@@ -47,10 +48,17 @@ export const MainPage = () => {
       const applicantView = applicantTable.getViewById(preset.applicantViewId);
       const applicantRecords = await applicantView.selectRecordsAsync()
       setResult(renderPreviewText(applicantRecords.records.length, preset.evaluationFields.length))
-      const evaluationRecords = await evaluateApplicants(applicantRecords.records, preset, setProgress)
-      setResult(`Evaluated applicants, creating evaluations in table...`)
-      await evaluationTable.createRecordsAsync(evaluationRecords.map(record => ({ fields: record })));
-      setResult(`Successfully created ${evaluationRecords.length} evaluation(s)`)
+      const evaluationWritingPromises = await Promise.allSettled(evaluateApplicants(applicantRecords.records, preset, setProgress).map(async (evaluationPromise) => {
+        const evaluation = await evaluationPromise;
+        console.log(`Evaluated applicant ${evaluation[preset.evaluationApplicantField]?.[0]?.id}, uploading to Airtable...`)
+        // It would be more efficient to do this as a batch. However, this caused us far more trouble that it was worth with the Airtable API - hitting size limits etc.
+        // Retrying helps handle other Airtable rate limits or intermittent faults
+        return pRetry(() => evaluationTable.createRecordAsync(evaluation))
+      }))
+      const successes = evaluationWritingPromises.filter(p => p.status === 'fulfilled')
+      const failures = evaluationWritingPromises.filter(p => p.status === 'rejected')
+      failures.map(f => console.error('Failed to evaluate applicant', f))
+      setResult(`Successfully created ${successes.length} evaluation(s).${failures.length !== 0 ? ` Failed ${failures.length} times. See console logs for failure details.` : ''}`)
     } catch (error) {
       const errorMessage = 'Error: ' + (error instanceof Error ? error.message : String(error))
       setResult(errorMessage);
