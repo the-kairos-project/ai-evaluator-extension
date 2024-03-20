@@ -1,13 +1,10 @@
 import pLimit from 'p-limit';
 import { openAiRequestConcurrency, openAiApiKey, openAiModel } from './config';
-
-export type Prompt = { role: 'system' | 'user' | 'assistant' | 'function', content: string }[];
+import { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(openAiRequestConcurrency);
 
-export async function getChatCompletion(
-  messages: Prompt,
-): Promise<string> {
+export const getChatCompletion: GetChatCompletion = async (messages) => {
   return globalRateLimit(async () => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
