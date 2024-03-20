@@ -4,22 +4,21 @@ import { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(anthropicRequestConcurrency);
 
-const supportedRoles = ['user', 'assistant']
-
 export const getChatCompletion: GetChatCompletion = async (messages) => {
-  const transformedMessages = messages.map(m => ({ ...m, role: supportedRoles.includes(m.role) ? m.role : 'user' }));
+  const lastMessageIsSystem = messages[messages.length - 1]?.role === "system";
 
   return globalRateLimit(async () => {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('http://localhost:8010/proxy/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
           'x-api-key': anthropicApiKey,
-          'OpenAI-Organization': 'org-2egSVUATOaBoS2Slr2CbYrcZ',
         },
         body: JSON.stringify({
           model: anthropicModel,
-          messages: transformedMessages,
+          messages: lastMessageIsSystem ? messages.slice(0, -1) : messages,
+          system: lastMessageIsSystem ? messages[messages.length - 1].content : undefined,
           max_tokens: 500,
         })
     });
