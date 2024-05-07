@@ -11,10 +11,7 @@ export type Preset = {
     evaluationTableId: string;
     evaluationFields: { fieldId: string, criteria: string }[];
     evaluationApplicantField: string;
-    evaluationEvaluatorField: string;
     evaluationLogsField?: string;
-
-    evaluatorRecordId: string;
 };
 
 export const defaultPreset: Preset = {
@@ -27,10 +24,7 @@ export const defaultPreset: Preset = {
     evaluationTableId: 'tblqqU2PPOCeRbQoj',
     evaluationFields: [],
     evaluationApplicantField: 'fldAVaTU0Btgt1i3p',
-    evaluationEvaluatorField: 'fld1Ax2LICBBnSNMT',
     evaluationLogsField: undefined,
-
-    evaluatorRecordId: 'recj0SQ3kjvA7L1Ua',
 };
 
 export const upsertPreset = async (preset: Preset = defaultPreset, oldName: string = preset.name): Promise<Preset> => {

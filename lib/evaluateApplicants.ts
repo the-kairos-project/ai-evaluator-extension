@@ -16,7 +16,6 @@ export const evaluateApplicants = (applicants: AirtableRecord[], preset: Preset,
         }
         const result: Record<string, unknown> = await evaluateApplicant(convertToPlainRecord(applicant, preset), preset, innerSetProgress)
         result[preset.evaluationApplicantField] = [{ id: applicant.id }];
-        result[preset.evaluationEvaluatorField] = [{ id: preset.evaluatorRecordId }];
         return result
     })
 }

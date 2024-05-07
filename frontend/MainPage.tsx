@@ -4,7 +4,6 @@ import {
   FieldPickerSynced,
   FormField,
   Input,
-  InputSynced,
   ProgressBar,
   TablePickerSynced,
   Text,
@@ -114,19 +113,6 @@ export const MainPage = () => {
             allowedTypes={[FieldType.MULTIPLE_RECORD_LINKS]}
             globalConfigKey={["presets", preset.name, "evaluationApplicantField"]}
             table={evaluationTable}
-          />
-        </FormField>
-        <FormField label="Evaluator field">
-          <FieldPickerSynced
-            allowedTypes={[FieldType.MULTIPLE_RECORD_LINKS]}
-            globalConfigKey={["presets", preset.name, "evaluationEvaluatorField"]}
-            table={evaluationTable}
-          />
-        </FormField>
-        <FormField label="Evaluator record ID">
-          <InputSynced
-            globalConfigKey={["presets", preset.name, "evaluatorRecordId"]}
-            placeholder="rec1234"
           />
         </FormField>
         <FormField label="(optional) Logs field">
