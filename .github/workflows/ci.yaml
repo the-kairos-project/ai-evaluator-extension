@@ -25,6 +25,12 @@ jobs:
         run: npm run build --if-present
       - name: "Test"
         run: npm run test --if-present
+      - name: "Configure for deployment"
+        if: github.ref == 'refs/heads/master'
+        run: |
+          echo "$PROD_ENV" > lib/env.ts
+        env:
+          PROD_ENV: ${{ secrets.PROD_ENV }}
       - name: "Deploy"
         if: github.ref == 'refs/heads/master'
         run: npm run deploy

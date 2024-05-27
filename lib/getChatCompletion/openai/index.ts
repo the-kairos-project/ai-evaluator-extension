@@ -1,5 +1,5 @@
 import pLimit from 'p-limit';
-import { openAiRequestConcurrency, openAiApiKey, openAiModel } from './config';
+import { openAiRequestConcurrency, openAiApiKey, openAiModel, openAiOrganisation } from './config';
 import { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(openAiRequestConcurrency);
@@ -11,7 +11,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${openAiApiKey}`,
-          'OpenAI-Organization': 'org-2egSVUATOaBoS2Slr2CbYrcZ',
+          'OpenAI-Organization': openAiOrganisation,
         },
         body: JSON.stringify({
           model: openAiModel,

@@ -1,6 +1,16 @@
 # ai-evaluator-extension ![deployment automatic](https://img.shields.io/badge/deployment-automatic-success)
 
-Airtable extension for evaluating application to our courses using AI, specifically large language models (LLMS).
+[Airtable extension](https://airtable.com/developers/extensions/guides/getting-started) for helping us evaluate applications to our courses using large language models (LLMs).
+
+![Screenshot of the Airtable extension](./screenshot.png)
+
+## Context
+
+We previously manually evaluated each applicant for our educational courses on a set of objective criteria. We would then use these scores plus some additional subjective judgement to come to an application decision. This is time-intensive, and it's difficult to align all the humans to give the same responses for the same person.
+
+In a [previous pilot project](https://github.com/bluedotimpact/ai-application-evaluations-pilot) we concluded that LLMs, while not perfect, could help us automate the first scoring part of our application process.
+
+This repository holds code for an Airtable extension that we can run inside our applications base. We set the relevant inputs (e.g. answers to application questions), the decisioning criteria, and let it evaluate applicants.
 
 ## Developer setup
 
