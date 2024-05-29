@@ -120,6 +120,7 @@ export const MainPage = () => {
             allowedTypes={[FieldType.SINGLE_LINE_TEXT, FieldType.MULTILINE_TEXT, FieldType.RICH_TEXT]}
             globalConfigKey={["presets", preset.name, "evaluationLogsField"]}
             table={evaluationTable}
+            shouldAllowPickingNone={true}
           />
         </FormField>
       </>)}
