@@ -86,10 +86,10 @@ export const PresetManager = () => {
   const selectedPreset = useSelectedPreset();
   const [editPresetDialogOpen, setEditPresetDialogOpen] = useState(false);
   const [editPresetName, setEditPresetName] = useState(selectedPreset.name);
-  const [editPresetJson, setEditPresetJson] = useState('');
+  const [editPresetJson, setEditPresetJson] = useState(JSON.stringify(selectedPreset));
   const openEditPresetDialog = () => {
     setEditPresetName(selectedPreset.name);
-    setEditPresetJson('');
+    setEditPresetJson(JSON.stringify(selectedPreset));
     setEditPresetDialogOpen(true);
   }
   const closeEditPresetDialog = () => {
@@ -143,7 +143,7 @@ export const PresetManager = () => {
               onClick={() => {
                 closeEditPresetDialog();
                 if (editPresetJson) {
-                  upsertPreset(JSON.parse(editPresetJson), selectedPreset.name)
+                  upsertPreset({ ...JSON.parse(editPresetJson), name: editPresetName }, selectedPreset.name)
                 } else {
                   upsertPreset({ ...selectedPreset, name: editPresetName }, selectedPreset.name)
                 }
