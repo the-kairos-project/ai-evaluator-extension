@@ -14,6 +14,8 @@ This repository holds code for an Airtable extension that we can run inside our 
 
 ## Developer setup
 
+> [Video tutorial](https://www.youtube.com/watch?v=nhnPxvEZmLk)
+
 To start developing this extension:
 
 1. Clone this git repository
