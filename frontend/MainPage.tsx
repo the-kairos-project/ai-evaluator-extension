@@ -5,17 +5,84 @@ import {
   FormField,
   Input,
   ProgressBar,
+  Select,
   TablePickerSynced,
   Text,
   useBase,
   ViewPickerSynced,
 } from "@airtable/blocks/ui";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Preset, upsertPreset, useSelectedPreset } from "../lib/preset";
 import { globalConfig } from "@airtable/blocks";
-import { Field, FieldType } from "@airtable/blocks/models";
-import { evaluateApplicants } from "../lib/evaluateApplicants";
+import { Field, FieldType, Record as AirtableRecord } from "@airtable/blocks/models";
+import { evaluateApplicants, SetProgress } from "../lib/evaluateApplicants";
 import pRetry from "p-retry";
+
+// Fast precheck function to filter out applicants that don't need processing
+const quickPrecheck = async (
+  applicants: AirtableRecord[],
+  preset: Preset,
+  setProgress: SetProgress,
+) => {
+  // Create a dependency map for quick lookups
+  const dependencyMap = new Map<string, string[]>();
+  
+  // For each evaluation field that has a dependency, record that information
+  preset.evaluationFields.forEach(({ fieldId, dependsOnInputField }) => {
+    if (dependsOnInputField) {
+      if (!dependencyMap.has(dependsOnInputField)) {
+        dependencyMap.set(dependsOnInputField, []);
+      }
+      dependencyMap.get(dependsOnInputField).push(fieldId);
+    }
+  });
+  
+  // If no dependencies, process all applicants
+  if (dependencyMap.size === 0) {
+    return { 
+      applicantsToProcess: applicants,
+      skippedApplicants: []
+    };
+  }
+  
+  // Fast check on each applicant
+  const applicantsToProcess = [];
+  const skippedApplicants = [];
+  
+  // Process in small batches to show progress
+  const batchSize = 100;
+  for (let i = 0; i < applicants.length; i += batchSize) {
+    const batch = applicants.slice(i, i + batchSize);
+    
+    for (const applicant of batch) {
+      let shouldProcess = false;
+      
+      // Check each dependency field
+      for (const inputFieldId of Array.from(dependencyMap.keys())) {
+        // If any required field has a value, we need to process this applicant
+        const value = applicant.getCellValueAsString(inputFieldId);
+        if (value && value.trim() !== "") {
+          shouldProcess = true;
+          break;
+        }
+      }
+      
+      if (shouldProcess) {
+        applicantsToProcess.push(applicant);
+      } else {
+        skippedApplicants.push(applicant);
+      }
+    }
+    
+    // Update progress to show the precheck is working
+    setProgress(prev => i / applicants.length * 0.1); // Use 10% of progress bar for precheck
+  }
+  
+  return {
+    applicantsToProcess,
+    skippedApplicants
+  };
+};
 
 const renderPreviewText = (
   numberOfApplicants: number,
@@ -59,28 +126,101 @@ export const MainPage = () => {
           preset.evaluationFields.length,
         ),
       );
-      const evaluationWritingPromises = await Promise.allSettled(
-        evaluateApplicants(applicantRecords.records, preset, setProgress).map(
-          async (evaluationPromise) => {
-            const evaluation = await evaluationPromise;
-            console.log(
-              `Evaluated applicant ${evaluation[preset.evaluationApplicantField]?.[0]?.id}, uploading to Airtable...`,
-            );
-            // It would be more efficient to do this as a batch. However, this caused us far more trouble that it was worth with the Airtable API - hitting size limits etc.
-            // Retrying helps handle other Airtable rate limits or intermittent faults
-            return pRetry(() => evaluationTable.createRecordAsync(evaluation));
-          },
-        ),
+      
+      // Fast precheck to eliminate applicants that don't need processing
+      setResult(`Starting pre-check for ${applicantRecords.records.length} applicants...`);
+      const { applicantsToProcess, skippedApplicants } = await quickPrecheck(
+        applicantRecords.records,
+        preset,
+        setProgress
       );
-      const successes = evaluationWritingPromises.filter(
-        (p) => p.status === "fulfilled",
+      
+      setResult(`Pre-check complete: ${applicantsToProcess.length} applicants to process, ${skippedApplicants.length} skipped entirely because their dependency fields are empty.`);
+      
+      if (applicantsToProcess.length === 0) {
+        setResult(`No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`);
+        setRunning(false);
+        return;
+      }
+      
+      // Process applicants in larger batches for speed
+      const batchSize = 10; // Process more applicants at a time for better throughput
+      const evaluationPromises = evaluateApplicants(
+        applicantsToProcess,
+        preset,
+        setProgress,
       );
-      const failures = evaluationWritingPromises.filter(
-        (p) => p.status === "rejected",
-      );
-      failures.map((f) => console.error("Failed to evaluate applicant", f));
+
+      let successCount = 0;
+      let failureCount = 0;
+      const failures = [];
+
+      // Process in batches
+      for (let i = 0; i < evaluationPromises.length; i += batchSize) {
+        const batch = evaluationPromises.slice(i, i + batchSize);
+        console.log(
+          `Processing batch ${i / batchSize + 1} of ${Math.ceil(evaluationPromises.length / batchSize)}`,
+        );
+
+        const batchResults = await Promise.allSettled(
+          batch.map(async (evaluationPromise) => {
+            try {
+              const evaluation = await evaluationPromise;
+
+              // No need to process evaluation anymore as fields with refused ratings
+              // have already been filtered out in evaluateApplicant
+              const processedEvaluation = { ...evaluation };
+
+              // Minimal logging to reduce overhead
+              if (i === 0 && evaluationPromise === batch[0]) {
+                console.log(`First evaluation in batch:`, Object.keys(processedEvaluation));
+              }
+
+              // More aggressive retry with longer backoff
+              return await pRetry(
+                () => evaluationTable.createRecordAsync(processedEvaluation),
+                {
+                  retries: 5,
+                  factor: 2,
+                  minTimeout: 1000,
+                  maxTimeout: 15000,
+                  onFailedAttempt: (error) => {
+                    console.warn(
+                      `Retry attempt failed for applicant ${evaluation[preset.evaluationApplicantField]?.[0]?.id}:`,
+                      error,
+                    );
+                  },
+                },
+              );
+            } catch (error) {
+              console.error("Failed to process evaluation:", error);
+              throw error;
+            }
+          }),
+        );
+
+        // Count successes and failures for this batch
+        const batchSuccesses = batchResults.filter(
+          (r) => r.status === "fulfilled",
+        );
+        const batchFailures = batchResults.filter(
+          (r) => r.status === "rejected",
+        );
+
+        successCount += batchSuccesses.length;
+        failureCount += batchFailures.length;
+        failures.push(...batchFailures);
+
+        // Update the UI to show progress
+        setResult(`Processed ${successCount}/${evaluationPromises.length} applicants (${skippedApplicants.length} skipped entirely)`);
+        
+        // No delay between batches to maximize throughput
+        // If Airtable rate limits become an issue, we can add it back
+      }
+
+      // Update the UI with final results
       setResult(
-        `Successfully created ${successes.length} evaluation(s).${failures.length !== 0 ? ` Failed ${failures.length} times. See console logs for failure details.` : ""}`,
+        `Successfully created ${successCount} evaluation(s).${failureCount !== 0 ? ` Failed ${failureCount} times. See console logs for failure details.` : ""}`,
       );
     } catch (error) {
       const errorMessage =
@@ -290,10 +430,12 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
   const evaluationField = preset.evaluationFields[index] ?? {
     fieldId: "",
     criteria: "",
+    dependsOnInputField: undefined,
   };
 
   const base = useBase();
   const evaluationTable = base.getTableByIdIfExists(preset.evaluationTableId);
+  const applicantTable = base.getTableByIdIfExists(preset.applicantTableId);
 
   const [field, setField] = useState<Field>(
     evaluationTable.getFieldByIdIfExists(evaluationField.fieldId),
@@ -301,6 +443,33 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
   const [criteria, setCriteria] = useState<string>(
     evaluationField.criteria ?? "",
   );
+  // We don't use the dependsOnField value directly, but we need the setter
+  const [, setDependsOnField] = useState<Field | null>(
+    evaluationField.dependsOnInputField
+      ? applicantTable?.getFieldByIdIfExists(
+          evaluationField.dependsOnInputField,
+        )
+      : null,
+  );
+
+  // Create options for the dependency dropdown from the applicant fields
+  const inputFieldOptions = useMemo(() => {
+    if (!applicantTable) return [{ value: "", label: "None" }];
+
+    const options = [{ value: "", label: "None (always evaluate)" }];
+
+    preset.applicantFields.forEach(({ fieldId }) => {
+      const field = applicantTable.getFieldByIdIfExists(fieldId);
+      if (field) {
+        options.push({
+          value: fieldId,
+          label: field.name,
+        });
+      }
+    });
+
+    return options;
+  }, [applicantTable, preset.applicantFields]);
 
   const saveField = (evaluationField: Preset["evaluationFields"][number]) => {
     // delete
@@ -347,6 +516,29 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
             saveField({
               ...evaluationField,
               criteria: event.target.value || undefined,
+            });
+          }}
+        />
+      </FormField>
+      <FormField
+        label="Only evaluate if this input field is not empty:"
+        className="mb-0 col-span-2"
+      >
+        <Select
+          options={inputFieldOptions}
+          value={evaluationField.dependsOnInputField || ""}
+          onChange={(value) => {
+            const dependsOnInputField = value === "" ? undefined : value;
+            setDependsOnField(
+              dependsOnInputField
+                ? applicantTable?.getFieldByIdIfExists(
+                    dependsOnInputField as string,
+                  )
+                : null,
+            );
+            saveField({
+              ...evaluationField,
+              dependsOnInputField: dependsOnInputField as string | undefined,
             });
           }}
         />

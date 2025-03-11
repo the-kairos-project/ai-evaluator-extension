@@ -9,7 +9,11 @@ export type Preset = {
     applicantFields: { fieldId: string, questionName?: string }[];
 
     evaluationTableId: string;
-    evaluationFields: { fieldId: string, criteria: string }[];
+    evaluationFields: { 
+        fieldId: string, 
+        criteria: string,
+        dependsOnInputField?: string  // Optional field ID from the applicant fields that must be non-empty
+    }[];
     evaluationApplicantField: string;
     evaluationLogsField?: string;
 };
