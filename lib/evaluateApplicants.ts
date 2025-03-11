@@ -9,11 +9,42 @@ export type SetProgress = (updater: (prev: number) => number) => void;
 /**
  * @returns array of promises, each expected to return an evaluation
  */
+// Maintain a mapping of field IDs to field names for better error reporting
+interface FieldMapping {
+  id: string;
+  name: string;
+}
+
 export const evaluateApplicants = (
   applicants: AirtableRecord[],
   preset: Preset,
   setProgress: SetProgress,
 ): Promise<Record<string, unknown>>[] => {
+  // Create a field name mapping for better error messages
+  const fieldNameMap = new Map<string, string>();
+  
+  // Get field names from the applicant 
+  try {
+    // Use the first applicant to get field names (all applicants have the same fields)
+    if (applicants.length > 0) {
+      const firstApplicant = applicants[0];
+      const table = firstApplicant.parentTable;
+      
+      // Map all evaluation field IDs to their names
+      preset.evaluationFields.forEach(({ fieldId }) => {
+        try {
+          const field = table.getFieldById(fieldId);
+          if (field) {
+            fieldNameMap.set(fieldId, field.name);
+          }
+        } catch (e) {
+          // Silently continue - we'll use the ID if the name is not available
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("Could not get field names for better error messages:", e);
+  }
   console.log(
     `Evaluating ${applicants.length} applicants with ${preset.evaluationFields.length} fields each`,
   );
@@ -51,6 +82,11 @@ export const evaluateApplicants = (
         (progress) => 0.1 + (0.9 / applicants.length) * updater(0), // Start at 10% (after precheck)
       );
     };
+    
+    // Helper function to get field name from ID
+    const getFieldName = (fieldId: string): string => {
+      return fieldNameMap.get(fieldId) || fieldId;
+    };
 
     // Convert the applicant record to a plain object - minimal work
     const plainRecord = convertToPlainRecord(applicant, preset);
@@ -85,6 +121,7 @@ export const evaluateApplicants = (
       preset,
       innerSetProgress,
       skipFields,
+      getFieldName, // Pass the field name lookup function
     );
 
     result[preset.evaluationApplicantField] = [{ id: applicant.id }];
@@ -150,6 +187,7 @@ const evaluateApplicant = async (
   preset: Preset,
   setProgress: SetProgress,
   skipFields: Set<string> = new Set(), // Fields to skip (faster approach)
+  getFieldName: (fieldId: string) => string = (id) => id, // Function to get field name from ID
 ): Promise<Record<string, number | string>> => {
   const logsByField = {};
   const skippedFields = {};
@@ -174,13 +212,21 @@ const evaluateApplicant = async (
       // - the model waffles on too long and hits the token limit
       // - we hit rate limits, or just transient faults
       // Retrying (with exponential backoff) appears to fix these problems
-      console.debug(`Processing record for criteria ${fieldId}`);
+      
+      // Get applicant identifier for better error logging
+      const applicantIdentifier = Object.entries(applicant)
+        .find(([key, value]) => key.toLowerCase().includes('name') || key.toLowerCase().includes('id'))?.[1] || 'unknown';
+      
+      // Get the field name for better logging
+      const fieldName = getFieldName(fieldId);
+      
+      console.debug(`Processing record for criteria ${fieldName} (applicant: ${applicantIdentifier})`);
       const { ranking, transcript } = await pRetry(
-        async () => evaluateItem(applicantString, criteria),
+        async () => evaluateItem(applicantString, criteria, fieldId, applicantIdentifier, fieldName),
         {
           onFailedAttempt: (error) =>
             console.error(
-              `Failed processing record on attempt ${error.attemptNumber} for criteria ${fieldId}: `,
+              `Failed processing record on attempt ${error.attemptNumber} for field "${fieldName}" (${fieldId}) for applicant "${applicantIdentifier}": `,
               error,
             ),
         },
@@ -232,6 +278,8 @@ const evaluateApplicant = async (
 const extractFinalRanking = (
   text: string,
   rankingKeyword = "FINAL_RANKING",
+  fieldIdentifier?: string,
+  applicantIdentifier?: string,
 ): number => {
   // Look for normal rating
   const regex = new RegExp(`${rankingKeyword}\\s*=\\s*([\\d\\.]+)`);
@@ -241,19 +289,22 @@ const extractFinalRanking = (
     const asInt = parseInt(match[1]);
     if (Math.abs(asInt - parseFloat(match[1])) > 0.01) {
       throw new Error(
-        `Non-integer final ranking: ${match[1]} (${rankingKeyword})`,
+        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`,
       );
     }
     return parseInt(match[1]);
   }
 
   // No rating found
-  throw new Error(`Missing final ranking (${rankingKeyword})`);
+  throw new Error(`Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`);
 };
 
 const evaluateItem = async (
   applicantString: string,
   criteriaString: string,
+  fieldIdentifier?: string, // Add optional field identifier for better error logging
+  applicantIdentifier?: string, // Add optional applicant identifier for better error logging
+  fieldName?: string, // Add optional human-readable field name
 ): Promise<{
   transcript: string;
   ranking: number;
@@ -277,7 +328,12 @@ First explain your reasoning thinking step by step. Then output your final answe
   const transcript = [...prompt, { role: "assistant", content: completion }]
     .map((message) => `## ${message.role}\n\n${message.content}`)
     .join("\n\n");
-  const ranking = extractFinalRanking(completion);
+  const ranking = extractFinalRanking(
+    completion, 
+    "FINAL_RANKING", 
+    fieldName || fieldIdentifier, // Use the human-readable field name if available
+    applicantIdentifier
+  );
   return {
     transcript,
     ranking,

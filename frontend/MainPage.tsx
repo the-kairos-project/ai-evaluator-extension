@@ -193,7 +193,27 @@ export const MainPage = () => {
                 },
               );
             } catch (error) {
-              console.error("Failed to process evaluation:", error);
+              // Get applicant ID/name for better error reporting
+              const applicantId = error.message?.match(/applicant "([^"]+)"/)?.[1] || "unknown";
+              // Get field name/ID for better error reporting (field name is now included in the error message)
+              const fieldMatch = error.message?.match(/field "([^"]+)"/);
+              const fieldNameOrId = fieldMatch?.[1] || "unknown";
+              
+              console.error(`Failed to process evaluation for applicant "${applicantId}" in field "${fieldNameOrId}":`, error);
+              
+              // Make error message more user-friendly and add to results
+              setResult(prev => {
+                // Extract just the error type for a cleaner message
+                let errorType = "processing error";
+                if (error.message?.includes("Missing final ranking")) {
+                  errorType = "missing rating";
+                } else if (error.message?.includes("Non-integer final ranking")) {
+                  errorType = "invalid rating format";
+                }
+                
+                return `${prev}\n⚠️ Error processing applicant "${applicantId}" in field "${fieldNameOrId}": ${errorType}`;
+              });
+              
               throw error;
             }
           }),
@@ -219,9 +239,64 @@ export const MainPage = () => {
       }
 
       // Update the UI with final results
-      setResult(
-        `Successfully created ${successCount} evaluation(s).${failureCount !== 0 ? ` Failed ${failureCount} times. See console logs for failure details.` : ""}`,
-      );
+      // Create a more detailed summary message
+      let summaryMessage = `Successfully created ${successCount} evaluation(s).`;
+      
+      if (failureCount > 0) {
+        summaryMessage += ` Failed ${failureCount} times.`;
+        
+        // Extract and display up to 3 unique error types from failures
+        const uniqueErrors = new Map();
+        failures.forEach(failure => {
+          const errorMessage = failure.reason?.message || "Unknown error";
+          // Extract field and applicant info if available
+          const fieldMatch = errorMessage.match(/field "([^"]+)"/);
+          const applicantMatch = errorMessage.match(/applicant "([^"]+)"/);
+          
+          if (fieldMatch && applicantMatch) {
+            // Determine the error type
+            let errorType = "other";
+            if (errorMessage.includes("Missing final ranking")) {
+              errorType = "missing_rating";
+            } else if (errorMessage.includes("Non-integer final ranking")) {
+              errorType = "invalid_rating";
+            }
+            
+            const key = `${fieldMatch[1]}:${errorType}`;
+            if (!uniqueErrors.has(key)) {
+              uniqueErrors.set(key, {
+                field: fieldMatch[1],
+                errorType,
+                count: 0
+              });
+            }
+            uniqueErrors.get(key).count++;
+          }
+        });
+        
+        // Add summary of most common errors
+        if (uniqueErrors.size > 0) {
+          summaryMessage += " Common issues:";
+          
+          Array.from(uniqueErrors.entries())
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 3)
+            .forEach(([_, info]) => {
+              // Get human-readable error message
+              let errorDescription = "";
+              if (info.errorType === "missing_rating") {
+                errorDescription = " (missing rating)";
+              } else if (info.errorType === "invalid_rating") {
+                errorDescription = " (invalid rating format)";
+              }
+              summaryMessage += `\n- ${info.count} failures in field "${info.field}"${errorDescription}`;
+            });
+            
+          summaryMessage += "\nSee console logs for complete details.";
+        }
+      }
+      
+      setResult(summaryMessage);
     } catch (error) {
       const errorMessage =
         "Error: " + (error instanceof Error ? error.message : String(error));
