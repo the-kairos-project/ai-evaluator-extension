@@ -133,6 +133,8 @@ const evaluateItem = async (
   applicantString: string,
   criteriaString: string,
 ): Promise<{ transcript: string; ranking: number }> => {
+  // Convert explicit line breaks to actual line breaks in the criteria (since they come from an HTML input)
+  criteriaString = criteriaString.replace(/<br>/g, "\n");
   const prompt: Prompt = [
     { role: "user", content: applicantString },
     {
