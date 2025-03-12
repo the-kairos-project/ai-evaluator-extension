@@ -1,7 +1,7 @@
 import { Icon, initializeBlock, loadScriptFromURLAsync } from '@airtable/blocks/ui';
 import { Tab } from '@headlessui/react';
 import React, { Fragment } from 'react';
-import { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
+import type { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
 import { PresetManager } from './components/PresetManager';
 import { MainPage } from './MainPage';
 
@@ -10,8 +10,9 @@ const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
     <Tab as={Fragment}>
       {({ selected }) => (
         <button
+          type="button"
           className={
-            'flex px-2 py-1 ' + (selected ? 'text-slate-50' : 'text-slate-400')
+            `flex px-2 py-1 ${selected ? 'text-slate-50' : 'text-slate-400'}`
           }
         >
           <Icon name={icon} size={16} />

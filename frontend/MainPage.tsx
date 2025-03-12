@@ -11,17 +11,18 @@ import {
   useBase,
   ViewPickerSynced,
 } from '@airtable/blocks/ui';
-import React, { useState, useMemo } from 'react';
+import type React from 'react';
+import { useState, useMemo } from 'react';
 
-import { Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
+import { type Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
 import { globalConfig } from '@airtable/blocks';
 import {
-  Field,
+  type Field,
   FieldType,
-  Record as AirtableRecord,
-  Table,
+  type Record as AirtableRecord,
+  type Table,
 } from '@airtable/blocks/models';
-import { evaluateApplicants, SetProgress } from '../lib/evaluateApplicants';
+import { evaluateApplicants, type SetProgress } from '../lib/evaluateApplicants';
 import pRetry from 'p-retry';
 
 // Fast precheck function to filter out applicants that don't need processing
@@ -280,7 +281,7 @@ export const MainPage = () => {
       );
     } catch (error) {
       const errorMessage =
-        'Error: ' + (error instanceof Error ? error.message : String(error));
+        `Error: ${error instanceof Error ? error.message : String(error)}`;
       setResult(errorMessage);
       setRunning(false);
     }

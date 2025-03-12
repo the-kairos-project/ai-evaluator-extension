@@ -16,11 +16,10 @@ const PresetChooser = () => {
 
   const presetOptions = useMemo(() => {
     if (!presets) return [];
-    else
-      return presets.map((preset) => ({
-        label: preset.name,
-        value: preset.name,
-      }));
+    return presets.map((preset) => ({
+      label: preset.name,
+      value: preset.name,
+    }));
   }, [presets]);
 
   const [newPresetDialogOpen, setNewPresetDialogOpen] = useState(false);
@@ -107,7 +106,7 @@ export const PresetManager = () => {
         className={`bg-slate-200 text-slate-700 h-7 rounded-l-none border-solid border border-y-0 border-r-0 ${showDeletePreset ? 'rounded-none' : ''}`}
         onClick={() => openEditPresetDialog()}
         aria-label="Edit preset"
-      ></Button>
+      />
       {showDeletePreset && (
         <Button
           icon="trash"
@@ -117,7 +116,7 @@ export const PresetManager = () => {
             deletePreset(selectedPreset.name);
           }}
           aria-label="Delete preset"
-        ></Button>
+        />
       )}
       {editPresetDialogOpen && (
         <Dialog onClose={closeEditPresetDialog} width="320px">

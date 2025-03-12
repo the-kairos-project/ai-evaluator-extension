@@ -1,6 +1,6 @@
-import { Record as AirtableRecord } from '@airtable/blocks/models';
-import { Preset } from './preset';
-import { Prompt } from './getChatCompletion';
+import type { Record as AirtableRecord } from '@airtable/blocks/models';
+import type { Preset } from './preset';
+import type { Prompt } from './getChatCompletion';
 import { getChatCompletion } from './getChatCompletion/openai';
 import pRetry from 'p-retry';
 
@@ -205,7 +205,7 @@ const stringifyApplicantForLLM = (applicant: Record<string, string>): string => 
  * @param maxLength Maximum allowed length (default: 95000)
  * @returns Truncated text with notice if needed
  */
-const truncateForAirtable = (text: string, maxLength: number = 95000): string => {
+const truncateForAirtable = (text: string, maxLength = 95000): string => {
   if (text.length <= maxLength) return text;
 
   const truncationNote =
@@ -229,7 +229,7 @@ const evaluateApplicant = async (
       // Fast path: check if this field should be skipped based on the pre-computed skipFields
       if (skipFields.has(fieldId)) {
         // Record it as skipped for logging purposes
-        skippedFields[fieldId] = `Skipped because the required input field was empty`;
+        skippedFields[fieldId] = 'Skipped because the required input field was empty';
 
         // Update progress and return null (we'll filter it out later)
         setProgress((prev) => prev + 1 / preset.evaluationFields.length);
@@ -266,7 +266,7 @@ const evaluateApplicant = async (
 
       // Truncate each individual transcript to avoid exceeding Airtable limits
       logsByField[fieldId] = truncateForAirtable(
-        `# ${fieldId}\n\n` + transcript,
+        `# ${fieldId}\n\n${transcript}`,
         30000
       );
 
@@ -317,14 +317,14 @@ const extractFinalRanking = (
   const regex = new RegExp(`${rankingKeyword}\\s*=\\s*([\\d\\.]+)`);
   const match = text.match(regex);
 
-  if (match && match[1]) {
-    const asInt = parseInt(match[1]);
-    if (Math.abs(asInt - parseFloat(match[1])) > 0.01) {
+  if (match?.[1]) {
+    const asInt = Number.parseInt(match[1]);
+    if (Math.abs(asInt - Number.parseFloat(match[1])) > 0.01) {
       throw new Error(
         `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
       );
     }
-    return parseInt(match[1]);
+    return Number.parseInt(match[1]);
   }
 
   // No rating found
