@@ -1,6 +1,6 @@
 import pLimit from 'p-limit';
 import { anthropicRequestConcurrency, anthropicApiKey, anthropicModel } from './config';
-import { GetChatCompletion } from '..';
+import type { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(anthropicRequestConcurrency);
 

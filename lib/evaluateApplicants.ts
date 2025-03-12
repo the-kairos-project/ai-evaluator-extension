@@ -27,31 +27,23 @@ const getApplicantIdentifier = (applicant: Record<string, string>): string => {
   return nameField ? nameField[1].substring(0, 30) : 'unknown';
 };
 
-export const evaluateApplicants = (
-  applicants: AirtableRecord[],
-  preset: Preset,
-  setProgress: SetProgress
-): Promise<Record<string, unknown>>[] => {
-  // Create a field name mapping for better error messages - optimize for performance
+// Helper to get field names from the table
+const getFieldNames = (
+  applicant: AirtableRecord,
+  preset: Preset
+): Map<string, string> => {
   const fieldNameMap = new Map<string, string>();
-
-  // Fast path: if empty, nothing to process
-  if (!applicants.length || !preset.evaluationFields.length) {
-    return [];
-  }
-
-  // More efficient approach to get field names - do it once and cache results
+  
   try {
-    const firstApplicant = applicants[0];
     // Access parentTable from AirtableRecord
-    const table = (firstApplicant as any).parentTable;
+    const table = (applicant as any).parentTable;
 
     // Get all field names in a single batch for better performance
-    preset.evaluationFields.forEach(({ fieldId }) => {
+    for (const { fieldId } of preset.evaluationFields) {
       // Check if we already have this field name cached
       if (fieldNameCache.has(fieldId)) {
         fieldNameMap.set(fieldId, fieldNameCache.get(fieldId));
-        return;
+        continue;
       }
 
       try {
@@ -65,21 +57,22 @@ export const evaluateApplicants = (
       } catch (e) {
         // Silently continue - we'll use the ID if the name is not available
       }
-    });
+    }
   } catch (e) {
     // Silent fail - will fall back to using IDs
   }
+  
+  return fieldNameMap;
+};
 
-  // Simple status log with core details
-  console.log(
-    `Processing ${applicants.length} applicants with ${preset.evaluationFields.length} evaluation fields`
-  );
-
-  // Preprocess dependency information for faster checks
+// Helper to build dependency map from evaluation fields
+const buildDependencyMap = (
+  preset: Preset
+): { dependencyMap: Map<string, string[]>; hasStandaloneFields: boolean } => {
   const dependencyMap = new Map<string, string[]>();
 
   // For each evaluation field that has a dependency, record that information
-  preset.evaluationFields.forEach(({ fieldId, dependsOnInputField }) => {
+  for (const { fieldId, dependsOnInputField } of preset.evaluationFields) {
     if (dependsOnInputField) {
       // Store the mapping from input field to dependent output fields
       if (!dependencyMap.has(dependsOnInputField)) {
@@ -87,21 +80,73 @@ export const evaluateApplicants = (
       }
       dependencyMap.get(dependsOnInputField).push(fieldId);
     }
-  });
-
+  }
+  
   // Check if any fields need to be evaluated at all
-  const hasFieldsToEvaluate = preset.evaluationFields.some(
+  const hasStandaloneFields = preset.evaluationFields.some(
     ({ dependsOnInputField }) => !dependsOnInputField
   );
+  
+  return { dependencyMap, hasStandaloneFields };
+};
 
-  // Simple dependency info log
+// Determine which fields to skip based on empty dependency fields
+const determineSkipFields = (
+  dependencyMap: Map<string, string[]>,
+  plainRecord: Record<string, string>,
+  preset: Preset
+): Set<string> => {
+  const skipFields = new Set<string>();
+  
+  dependencyMap.forEach((dependentFields, inputFieldId) => {
+    // Get the value from the plain record
+    const key =
+      preset.applicantFields.find((f) => f.fieldId === inputFieldId)?.questionName ||
+      inputFieldId;
+    const value = plainRecord[key] || plainRecord[inputFieldId] || '';
+
+    // If empty, mark all dependent fields to be skipped
+    if (!value || value.trim() === '') {
+      for (const fieldId of dependentFields) {
+        skipFields.add(fieldId);
+      }
+    }
+  });
+  
+  return skipFields;
+};
+
+export const evaluateApplicants = (
+  applicants: AirtableRecord[],
+  preset: Preset,
+  setProgress: SetProgress
+): Promise<Record<string, unknown>>[] => {
+  // Fast path: if empty, nothing to process
+  if (!applicants.length || !preset.evaluationFields.length) {
+    return [];
+  }
+
+  // Get field names for better error messages
+  const fieldNameMap = applicants.length > 0 
+    ? getFieldNames(applicants[0], preset) 
+    : new Map<string, string>();
+
+  // Log basic processing info
+  console.log(
+    `Processing ${applicants.length} applicants with ${preset.evaluationFields.length} evaluation fields`
+  );
+
+  // Build dependency map
+  const { dependencyMap, hasStandaloneFields } = buildDependencyMap(preset);
+
+  // Log dependency info
   if (dependencyMap.size > 0) {
     console.log(
       `Field dependencies: ${dependencyMap.size} input fields have dependent output fields`
     );
   }
 
-  // Optimize by using an array
+  // Process each applicant
   return applicants.map(async (applicant) => {
     // Create a progress updater specific to this applicant
     const innerSetProgress: SetProgress = (updater) => {
@@ -115,32 +160,18 @@ export const evaluateApplicants = (
       return fieldNameMap.get(fieldId) || fieldId;
     };
 
-    // Convert the applicant record to a plain object - minimal work
+    // Convert the applicant record to a plain object
     const plainRecord = convertToPlainRecord(applicant, preset);
 
     // Fast path: if no fields need evaluation (all are dependent), return empty result
-    if (!hasFieldsToEvaluate && dependencyMap.size === 0) {
+    if (!hasStandaloneFields && dependencyMap.size === 0) {
       const result: Record<string, unknown> = {};
       result[preset.evaluationApplicantField] = [{ id: applicant.id }];
       return result;
     }
 
-    // Quick check if any dependency fields are empty before doing detailed work
-    const skipFields = new Set<string>();
-
-    // Process all dependencies in one go
-    dependencyMap.forEach((dependentFields, inputFieldId) => {
-      // Get the value from the plain record
-      const key =
-        preset.applicantFields.find((f) => f.fieldId === inputFieldId)?.questionName ||
-        inputFieldId;
-      const value = plainRecord[key] || plainRecord[inputFieldId] || '';
-
-      // If empty, mark all dependent fields to be skipped
-      if (!value || value.trim() === '') {
-        dependentFields.forEach((fieldId) => skipFields.add(fieldId));
-      }
-    });
+    // Determine which fields to skip
+    const skipFields = determineSkipFields(dependencyMap, plainRecord, preset);
 
     // Process the applicant
     const result: Record<string, unknown> = await evaluateApplicant(
@@ -162,7 +193,7 @@ const convertToPlainRecord = (
 ): Record<string, string> => {
   const record = {};
 
-  preset.applicantFields.forEach((field) => {
+  for (const field of preset.applicantFields) {
     try {
       // Use the field's questionName if available, otherwise use the field ID as the key
       const key = field.questionName || field.fieldId;
@@ -180,7 +211,7 @@ const convertToPlainRecord = (
     } catch (error) {
       console.error(`Error converting field ${field.fieldId}:`, error);
     }
-  });
+  }
 
   return record;
 };
@@ -344,12 +375,12 @@ const evaluateItem = async (
   ranking: number;
 }> => {
   // Convert explicit line breaks to actual line breaks in the criteria (since they come from an HTML input)
-  criteriaString = criteriaString.replace(/<br>/g, '\n');
+  const processedCriteriaString = criteriaString.replace(/<br>/g, '\n');
   const prompt: Prompt = [
     { role: 'user', content: applicantString },
     {
       role: 'system',
-      content: `Evaluate the application above, based on the following rubric: ${criteriaString}
+      content: `Evaluate the application above, based on the following rubric: ${processedCriteriaString}
 
 You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
 

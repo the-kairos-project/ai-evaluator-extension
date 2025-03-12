@@ -11,7 +11,7 @@ import {
   useBase,
   ViewPickerSynced,
 } from '@airtable/blocks/ui';
-import type React from 'react';
+import React from 'react';
 import { useState, useMemo } from 'react';
 
 import { type Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
@@ -25,6 +25,35 @@ import {
 import { evaluateApplicants, type SetProgress } from '../lib/evaluateApplicants';
 import pRetry from 'p-retry';
 
+// Helper function to build dependency map
+const buildDependencyMap = (preset: Preset): Map<string, string[]> => {
+  const dependencyMap = new Map<string, string[]>();
+  
+  for (const { fieldId, dependsOnInputField } of preset.evaluationFields) {
+    if (dependsOnInputField) {
+      if (!dependencyMap.has(dependsOnInputField)) {
+        dependencyMap.set(dependsOnInputField, []);
+      }
+      dependencyMap.get(dependsOnInputField).push(fieldId);
+    }
+  }
+  
+  return dependencyMap;
+};
+
+// Helper function to check if an applicant should be processed
+const shouldProcessApplicant = (applicant: AirtableRecord, dependencyFields: string[]): boolean => {
+  // Check each dependency field
+  for (const inputFieldId of dependencyFields) {
+    // If any required field has a value, we need to process this applicant
+    const value = applicant.getCellValueAsString(inputFieldId);
+    if (value && value.trim() !== '') {
+      return true;
+    }
+  }
+  return false;
+};
+
 // Fast precheck function to filter out applicants that don't need processing
 const quickPrecheck = async (
   applicants: AirtableRecord[],
@@ -32,17 +61,7 @@ const quickPrecheck = async (
   setProgress: SetProgress
 ) => {
   // Create a dependency map for quick lookups
-  const dependencyMap = new Map<string, string[]>();
-
-  // For each evaluation field that has a dependency, record that information
-  preset.evaluationFields.forEach(({ fieldId, dependsOnInputField }) => {
-    if (dependsOnInputField) {
-      if (!dependencyMap.has(dependsOnInputField)) {
-        dependencyMap.set(dependsOnInputField, []);
-      }
-      dependencyMap.get(dependsOnInputField).push(fieldId);
-    }
-  });
+  const dependencyMap = buildDependencyMap(preset);
 
   // If no dependencies, process all applicants
   if (dependencyMap.size === 0) {
@@ -55,6 +74,7 @@ const quickPrecheck = async (
   // Fast check on each applicant
   const applicantsToProcess = [];
   const skippedApplicants = [];
+  const dependencyFields = Array.from(dependencyMap.keys());
 
   // Process in small batches to show progress
   const batchSize = 100;
@@ -62,19 +82,7 @@ const quickPrecheck = async (
     const batch = applicants.slice(i, i + batchSize);
 
     for (const applicant of batch) {
-      let shouldProcess = false;
-
-      // Check each dependency field
-      for (const inputFieldId of Array.from(dependencyMap.keys())) {
-        // If any required field has a value, we need to process this applicant
-        const value = applicant.getCellValueAsString(inputFieldId);
-        if (value && value.trim() !== '') {
-          shouldProcess = true;
-          break;
-        }
-      }
-
-      if (shouldProcess) {
+      if (shouldProcessApplicant(applicant, dependencyFields)) {
         applicantsToProcess.push(applicant);
       } else {
         skippedApplicants.push(applicant);
@@ -218,74 +226,89 @@ export const MainPage = () => {
     return { successes: totalSuccesses, failures: totalFailures };
   }
 
+  // Validate prerequisites before running
+  const validatePrerequisites = () => {
+    if (!applicantTable) throw new Error('Could not access applicant table');
+    if (!evaluationTable) throw new Error('Could not access evaluation table');
+    if (!preset.applicantFields.length) throw new Error('No input fields selected');
+    if (!preset.evaluationFields.length) throw new Error('No output fields selected');
+  };
+
+  // Handle the evaluation process
+  const processEvaluation = async () => {
+    // Get applicant records
+    setResult('Getting applicant records...');
+    const applicantView = applicantTable.getViewById(preset.applicantViewId);
+    const applicantRecords = await applicantView.selectRecordsAsync();
+    
+    setResult(
+      renderPreviewText(
+        applicantRecords.records.length,
+        preset.evaluationFields.length
+      )
+    );
+
+    // Fast precheck to eliminate applicants that don't need processing
+    setResult(`Starting pre-check for ${applicantRecords.records.length} applicants...`);
+    const { applicantsToProcess, skippedApplicants } = await quickPrecheck(
+      applicantRecords.records,
+      preset,
+      setProgress
+    );
+
+    setResult(
+      `Pre-check complete: ${applicantsToProcess.length} applicants to process, ${skippedApplicants.length} skipped entirely because their dependency fields are empty.`
+    );
+
+    if (applicantsToProcess.length === 0) {
+      return {
+        message: `No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`,
+        skippedCount: skippedApplicants.length,
+        successCount: 0,
+        failureCount: 0
+      };
+    }
+
+    // Process applicants in batches to prevent browser overload
+    const { successes, failures } = await processBatchedApplicants(
+      applicantsToProcess,
+      preset,
+      evaluationTable,
+      setProgress,
+      setResult
+    );
+
+    return {
+      message: `Successfully created ${successes} evaluation(s) of ${
+        applicantsToProcess.length
+      } applicants. ${skippedApplicants.length} applicants were skipped entirely.${
+        failures !== 0
+          ? ` Failed ${failures} times. See console logs for failure details.`
+          : ''
+      }`,
+      skippedCount: skippedApplicants.length,
+      successCount: successes,
+      failureCount: failures
+    };
+  };
+
   const run = async () => {
     setRunning(true);
     setProgress(0);
     setResult(null);
     console.log('Running preset', preset);
+    
     try {
-      if (!applicantTable) throw new Error('Could not access applicant table');
-      if (!evaluationTable) throw new Error('Could not access evaluation table');
-      if (!preset.applicantFields.length) throw new Error('No input fields selected');
-      if (!preset.evaluationFields.length) throw new Error('No output fields selected');
-      setResult('Getting applicant records...');
-      const applicantView = applicantTable.getViewById(preset.applicantViewId);
-      const applicantRecords = await applicantView.selectRecordsAsync();
-      setResult(
-        renderPreviewText(
-          applicantRecords.records.length,
-          preset.evaluationFields.length
-        )
-      );
-
-      // Fast precheck to eliminate applicants that don't need processing
-      setResult(
-        `Starting pre-check for ${applicantRecords.records.length} applicants...`
-      );
-      const { applicantsToProcess, skippedApplicants } = await quickPrecheck(
-        applicantRecords.records,
-        preset,
-        setProgress
-      );
-
-      setResult(
-        `Pre-check complete: ${applicantsToProcess.length} applicants to process, ${skippedApplicants.length} skipped entirely because their dependency fields are empty.`
-      );
-
-      if (applicantsToProcess.length === 0) {
-        setResult(
-          `No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`
-        );
-        setRunning(false);
-        return;
-      }
-
-      // Process applicants in batches to prevent browser overload
-      const { successes, failures } = await processBatchedApplicants(
-        applicantsToProcess,
-        preset,
-        evaluationTable,
-        setProgress,
-        setResult
-      );
-
-      // Include information about skipped applicants in the result
-      setResult(
-        `Successfully created ${successes} evaluation(s) of ${
-          applicantsToProcess.length
-        } applicants. ${skippedApplicants.length} applicants were skipped entirely.${
-          failures !== 0
-            ? ` Failed ${failures} times. See console logs for failure details.`
-            : ''
-        }`
-      );
+      validatePrerequisites();
+      const result = await processEvaluation();
+      setResult(result.message);
     } catch (error) {
       const errorMessage =
         `Error: ${error instanceof Error ? error.message : String(error)}`;
       setResult(errorMessage);
+    } finally {
       setRunning(false);
     }
-    setRunning(false);
   };
 
   return (
@@ -309,11 +332,15 @@ export const MainPage = () => {
           </FormField>
           <FormField label="Answer (input) fields">
             <div className="flex flex-col gap-2">
-              {preset.applicantFields.map((_, index) => (
-                <ApplicantFieldEditor key={index} preset={preset} index={index} />
+              {preset.applicantFields.map((field, index) => (
+                <ApplicantFieldEditor 
+                  key={`applicant-field-${field.fieldId || ''}-${index}`} 
+                  preset={preset} 
+                  index={index} 
+                />
               ))}
               <ApplicantFieldEditor
-                key={preset.applicantFields.length}
+                key={`applicant-new-field-${preset.applicantFields.length}`}
                 preset={preset}
                 index={preset.applicantFields.length}
               />
@@ -338,11 +365,15 @@ export const MainPage = () => {
         <>
           <FormField label="Score (output) fields">
             <div className="flex flex-col gap-2">
-              {preset.evaluationFields.map((_, index) => (
-                <EvaluationFieldEditor key={index} preset={preset} index={index} />
+              {preset.evaluationFields.map((field, index) => (
+                <EvaluationFieldEditor 
+                  key={`eval-field-${field.fieldId || ''}-${index}`} 
+                  preset={preset} 
+                  index={index} 
+                />
               ))}
               <EvaluationFieldEditor
-                key={preset.evaluationFields.length}
+                key={`eval-new-field-${preset.evaluationFields.length}`}
                 preset={preset}
                 index={preset.evaluationFields.length}
               />
@@ -371,8 +402,7 @@ export const MainPage = () => {
       )}
 
       <Button
-        // @ts-ignore
-        type="[workaround]"
+        type="button"
         variant="primary"
         icon="play"
         onClick={run}
@@ -484,7 +514,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
 
     const options = [{ value: '', label: 'None (always evaluate)' }];
 
-    preset.applicantFields.forEach(({ fieldId }) => {
+    for (const { fieldId } of preset.applicantFields) {
       const field = applicantTable.getFieldByIdIfExists(fieldId);
       if (field) {
         options.push({
@@ -492,7 +522,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
           label: field.name,
         });
       }
-    });
+    }
 
     return options;
   }, [applicantTable, preset.applicantFields]);

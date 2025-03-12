@@ -5,7 +5,7 @@ import {
   openAiModel,
   openAiOrganisation,
 } from './config';
-import { GetChatCompletion } from '..';
+import type { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(openAiRequestConcurrency);
 

@@ -45,6 +45,9 @@ function App() {
   );
 }
 
+// Note: The ReactDOM.render warning is coming from Airtable's initializeBlock function
+// We can't easily fix it since it's using the legacy API internally
+// When Airtable updates their SDK, this warning should disappear
 loadScriptFromURLAsync('https://cdn.tailwindcss.com').then(async () => {
   initializeBlock(() => <App />);
 });
