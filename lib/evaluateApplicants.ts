@@ -9,44 +9,72 @@ export type SetProgress = (updater: (prev: number) => number) => void;
 /**
  * @returns array of promises, each expected to return an evaluation
  */
-// Maintain a mapping of field IDs to field names for better error reporting
-interface FieldMapping {
-  id: string;
-  name: string;
-}
+
+// Cached field map to avoid repetitive lookups across multiple calls
+const fieldNameCache = new Map<string, string>();
+
+/**
+ * Helper functions for simplified logging
+ */
+// Get a simple identifier for an applicant
+const getApplicantIdentifier = (applicant: Record<string, string>): string => {
+  // Try to find name or id field first
+  const nameField = Object.entries(applicant).find(
+    ([key, value]) =>
+      (key.toLowerCase().includes("name") ||
+        key.toLowerCase().includes("id")) &&
+      value,
+  );
+
+  return nameField ? nameField[1].substring(0, 30) : "unknown";
+};
 
 export const evaluateApplicants = (
   applicants: AirtableRecord[],
   preset: Preset,
   setProgress: SetProgress,
 ): Promise<Record<string, unknown>>[] => {
-  // Create a field name mapping for better error messages
+  // Create a field name mapping for better error messages - optimize for performance
   const fieldNameMap = new Map<string, string>();
-  
-  // Get field names from the applicant 
-  try {
-    // Use the first applicant to get field names (all applicants have the same fields)
-    if (applicants.length > 0) {
-      const firstApplicant = applicants[0];
-      const table = firstApplicant.parentTable;
-      
-      // Map all evaluation field IDs to their names
-      preset.evaluationFields.forEach(({ fieldId }) => {
-        try {
-          const field = table.getFieldById(fieldId);
-          if (field) {
-            fieldNameMap.set(fieldId, field.name);
-          }
-        } catch (e) {
-          // Silently continue - we'll use the ID if the name is not available
-        }
-      });
-    }
-  } catch (e) {
-    console.warn("Could not get field names for better error messages:", e);
+
+  // Fast path: if empty, nothing to process
+  if (!applicants.length || !preset.evaluationFields.length) {
+    return [];
   }
+
+  // More efficient approach to get field names - do it once and cache results
+  try {
+    const firstApplicant = applicants[0];
+    // Access parentTable from AirtableRecord
+    const table = (firstApplicant as any).parentTable;
+
+    // Get all field names in a single batch for better performance
+    preset.evaluationFields.forEach(({ fieldId }) => {
+      // Check if we already have this field name cached
+      if (fieldNameCache.has(fieldId)) {
+        fieldNameMap.set(fieldId, fieldNameCache.get(fieldId));
+        return;
+      }
+
+      try {
+        const field = table.getFieldById(fieldId);
+        if (field) {
+          const fieldName = field.name;
+          // Cache for future use
+          fieldNameCache.set(fieldId, fieldName);
+          fieldNameMap.set(fieldId, fieldName);
+        }
+      } catch (e) {
+        // Silently continue - we'll use the ID if the name is not available
+      }
+    });
+  } catch (e) {
+    // Silent fail - will fall back to using IDs
+  }
+
+  // Simple status log with core details
   console.log(
-    `Evaluating ${applicants.length} applicants with ${preset.evaluationFields.length} fields each`,
+    `Processing ${applicants.length} applicants with ${preset.evaluationFields.length} evaluation fields`,
   );
 
   // Preprocess dependency information for faster checks
@@ -68,9 +96,10 @@ export const evaluateApplicants = (
     ({ dependsOnInputField }) => !dependsOnInputField,
   );
 
+  // Simple dependency info log
   if (dependencyMap.size > 0) {
     console.log(
-      `Created dependency map for ${dependencyMap.size} input fields`,
+      `Field dependencies: ${dependencyMap.size} input fields have dependent output fields`,
     );
   }
 
@@ -79,10 +108,10 @@ export const evaluateApplicants = (
     // Create a progress updater specific to this applicant
     const innerSetProgress: SetProgress = (updater) => {
       setProgress(
-        (progress) => 0.1 + (0.9 / applicants.length) * updater(0), // Start at 10% (after precheck)
+        () => 0.1 + (0.9 / applicants.length) * updater(0), // Start at 10% (after precheck)
       );
     };
-    
+
     // Helper function to get field name from ID
     const getFieldName = (fieldId: string): string => {
       return fieldNameMap.get(fieldId) || fieldId;
@@ -158,7 +187,12 @@ const convertToPlainRecord = (
   return record;
 };
 
-// TODO: test if plain JSON is better
+/**
+ * Format applicant data for LLM processing
+ *
+ * @param applicant Record containing applicant data
+ * @returns Formatted string for LLM input
+ */
 const stringifyApplicantForLLM = (
   applicant: Record<string, string>,
 ): string => {
@@ -168,15 +202,19 @@ const stringifyApplicantForLLM = (
     .join("\n\n");
 };
 
-// Helper function to truncate text to fit Airtable's limits
-// Airtable has a max of 100,000 characters per cell
+/**
+ * Ensure text fits within Airtable's character limits
+ *
+ * @param text Text to potentially truncate
+ * @param maxLength Maximum allowed length (default: 95000)
+ * @returns Truncated text with notice if needed
+ */
 const truncateForAirtable = (
   text: string,
   maxLength: number = 95000,
 ): string => {
   if (text.length <= maxLength) return text;
 
-  // If we need to truncate, add a note about it
   const truncationNote =
     "\n\n[CONTENT TRUNCATED: This text was too long for Airtable's limits]";
   return text.substring(0, maxLength - truncationNote.length) + truncationNote;
@@ -212,23 +250,31 @@ const evaluateApplicant = async (
       // - the model waffles on too long and hits the token limit
       // - we hit rate limits, or just transient faults
       // Retrying (with exponential backoff) appears to fix these problems
-      
-      // Get applicant identifier for better error logging
-      const applicantIdentifier = Object.entries(applicant)
-        .find(([key, value]) => key.toLowerCase().includes('name') || key.toLowerCase().includes('id'))?.[1] || 'unknown';
-      
-      // Get the field name for better logging
+
+      // Get simplified identifiers for logging
+      const applicantId = getApplicantIdentifier(applicant);
       const fieldName = getFieldName(fieldId);
-      
-      console.debug(`Processing record for criteria ${fieldName} (applicant: ${applicantIdentifier})`);
+
+      // Use simpler debug logging
+      console.debug(`Evaluating ${fieldName} for ${applicantId}`);
+
+      // Use consistent retry pattern
       const { ranking, transcript } = await pRetry(
-        async () => evaluateItem(applicantString, criteria, fieldId, applicantIdentifier, fieldName),
+        async () =>
+          evaluateItem(
+            applicantString,
+            criteria,
+            fieldId,
+            applicantId,
+            fieldName,
+          ),
         {
-          onFailedAttempt: (error) =>
-            console.error(
-              `Failed processing record on attempt ${error.attemptNumber} for field "${fieldName}" (${fieldId}) for applicant "${applicantIdentifier}": `,
-              error,
-            ),
+          // Consistent error format for easier extraction
+          onFailedAttempt: (error) => {
+            // Format: "FIELD_NAME for APPLICANT_ID - ERROR_MESSAGE"
+            // This consistent format makes it easy to extract field and applicant info
+            console.error(`${fieldName} for ${applicantId} - ${error.message}`);
+          },
         },
       );
 
@@ -289,14 +335,16 @@ const extractFinalRanking = (
     const asInt = parseInt(match[1]);
     if (Math.abs(asInt - parseFloat(match[1])) > 0.01) {
       throw new Error(
-        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`,
+        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ""}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ""}`,
       );
     }
     return parseInt(match[1]);
   }
 
   // No rating found
-  throw new Error(`Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`);
+  throw new Error(
+    `Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ""}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ""}`,
+  );
 };
 
 const evaluateItem = async (
@@ -322,20 +370,35 @@ You should ignore general statements or facts about the world, and focus on what
 First explain your reasoning thinking step by step. Then output your final answer by stating 'FINAL_RANKING = ' and then the relevant integer between the minimum and maximum values in the rubric.`,
     },
   ];
-  console.debug(prompt);
+  // Reduce debug logging to just essentials
   const completion = await getChatCompletion(prompt);
-  console.debug(completion);
+
+  // Create a clean transcript format
   const transcript = [...prompt, { role: "assistant", content: completion }]
     .map((message) => `## ${message.role}\n\n${message.content}`)
     .join("\n\n");
-  const ranking = extractFinalRanking(
-    completion, 
-    "FINAL_RANKING", 
-    fieldName || fieldIdentifier, // Use the human-readable field name if available
-    applicantIdentifier
-  );
-  return {
-    transcript,
-    ranking,
-  };
+    
+  try {
+    // Try to extract the ranking, if it fails it will throw an error
+    const ranking = extractFinalRanking(
+      completion,
+      "FINAL_RANKING",
+      fieldName || fieldIdentifier, // Use the human-readable field name if available
+      applicantIdentifier,
+    );
+    
+    return {
+      transcript,
+      ranking,
+    };
+  } catch (error) {
+    // Always log the full LLM response when the ranking extraction fails
+    console.group(`📋 Full LLM Response for ${fieldName || fieldIdentifier}:`);
+    console.log("Error:", error.message);
+    console.log(completion);
+    console.groupEnd();
+    
+    // Re-throw the error so it can be handled by the retry mechanism
+    throw error;
+  }
 };

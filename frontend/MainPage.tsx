@@ -12,9 +12,14 @@ import {
   ViewPickerSynced,
 } from "@airtable/blocks/ui";
 import React, { useState, useMemo } from "react";
+
 import { Preset, upsertPreset, useSelectedPreset } from "../lib/preset";
 import { globalConfig } from "@airtable/blocks";
-import { Field, FieldType, Record as AirtableRecord } from "@airtable/blocks/models";
+import {
+  Field,
+  FieldType,
+  Record as AirtableRecord,
+} from "@airtable/blocks/models";
 import { evaluateApplicants, SetProgress } from "../lib/evaluateApplicants";
 import pRetry from "p-retry";
 
@@ -26,7 +31,7 @@ const quickPrecheck = async (
 ) => {
   // Create a dependency map for quick lookups
   const dependencyMap = new Map<string, string[]>();
-  
+
   // For each evaluation field that has a dependency, record that information
   preset.evaluationFields.forEach(({ fieldId, dependsOnInputField }) => {
     if (dependsOnInputField) {
@@ -36,27 +41,27 @@ const quickPrecheck = async (
       dependencyMap.get(dependsOnInputField).push(fieldId);
     }
   });
-  
+
   // If no dependencies, process all applicants
   if (dependencyMap.size === 0) {
-    return { 
+    return {
       applicantsToProcess: applicants,
-      skippedApplicants: []
+      skippedApplicants: [],
     };
   }
-  
+
   // Fast check on each applicant
   const applicantsToProcess = [];
   const skippedApplicants = [];
-  
+
   // Process in small batches to show progress
   const batchSize = 100;
   for (let i = 0; i < applicants.length; i += batchSize) {
     const batch = applicants.slice(i, i + batchSize);
-    
+
     for (const applicant of batch) {
       let shouldProcess = false;
-      
+
       // Check each dependency field
       for (const inputFieldId of Array.from(dependencyMap.keys())) {
         // If any required field has a value, we need to process this applicant
@@ -66,24 +71,23 @@ const quickPrecheck = async (
           break;
         }
       }
-      
+
       if (shouldProcess) {
         applicantsToProcess.push(applicant);
       } else {
         skippedApplicants.push(applicant);
       }
     }
-    
+
     // Update progress to show the precheck is working
-    setProgress(prev => i / applicants.length * 0.1); // Use 10% of progress bar for precheck
+    setProgress(() => (i / applicants.length) * 0.1); // Use 10% of progress bar for precheck
   }
-  
+
   return {
     applicantsToProcess,
-    skippedApplicants
+    skippedApplicants,
   };
 };
-
 const renderPreviewText = (
   numberOfApplicants: number,
   numberOfEvaluationCriteria: number,
@@ -126,177 +130,55 @@ export const MainPage = () => {
           preset.evaluationFields.length,
         ),
       );
-      
+
       // Fast precheck to eliminate applicants that don't need processing
-      setResult(`Starting pre-check for ${applicantRecords.records.length} applicants...`);
+      setResult(
+        `Starting pre-check for ${applicantRecords.records.length} applicants...`,
+      );
       const { applicantsToProcess, skippedApplicants } = await quickPrecheck(
         applicantRecords.records,
-        preset,
-        setProgress
-      );
-      
-      setResult(`Pre-check complete: ${applicantsToProcess.length} applicants to process, ${skippedApplicants.length} skipped entirely because their dependency fields are empty.`);
-      
-      if (applicantsToProcess.length === 0) {
-        setResult(`No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`);
-        setRunning(false);
-        return;
-      }
-      
-      // Process applicants in larger batches for speed
-      const batchSize = 10; // Process more applicants at a time for better throughput
-      const evaluationPromises = evaluateApplicants(
-        applicantsToProcess,
         preset,
         setProgress,
       );
 
-      let successCount = 0;
-      let failureCount = 0;
-      const failures = [];
+      setResult(
+        `Pre-check complete: ${applicantsToProcess.length} applicants to process, ${skippedApplicants.length} skipped entirely because their dependency fields are empty.`,
+      );
 
-      // Process in batches
-      for (let i = 0; i < evaluationPromises.length; i += batchSize) {
-        const batch = evaluationPromises.slice(i, i + batchSize);
-        console.log(
-          `Processing batch ${i / batchSize + 1} of ${Math.ceil(evaluationPromises.length / batchSize)}`,
+      if (applicantsToProcess.length === 0) {
+        setResult(
+          `No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`,
         );
-
-        const batchResults = await Promise.allSettled(
-          batch.map(async (evaluationPromise) => {
-            try {
-              const evaluation = await evaluationPromise;
-
-              // No need to process evaluation anymore as fields with refused ratings
-              // have already been filtered out in evaluateApplicant
-              const processedEvaluation = { ...evaluation };
-
-              // Minimal logging to reduce overhead
-              if (i === 0 && evaluationPromise === batch[0]) {
-                console.log(`First evaluation in batch:`, Object.keys(processedEvaluation));
-              }
-
-              // More aggressive retry with longer backoff
-              return await pRetry(
-                () => evaluationTable.createRecordAsync(processedEvaluation),
-                {
-                  retries: 5,
-                  factor: 2,
-                  minTimeout: 1000,
-                  maxTimeout: 15000,
-                  onFailedAttempt: (error) => {
-                    console.warn(
-                      `Retry attempt failed for applicant ${evaluation[preset.evaluationApplicantField]?.[0]?.id}:`,
-                      error,
-                    );
-                  },
-                },
-              );
-            } catch (error) {
-              // Get applicant ID/name for better error reporting
-              const applicantId = error.message?.match(/applicant "([^"]+)"/)?.[1] || "unknown";
-              // Get field name/ID for better error reporting (field name is now included in the error message)
-              const fieldMatch = error.message?.match(/field "([^"]+)"/);
-              const fieldNameOrId = fieldMatch?.[1] || "unknown";
-              
-              console.error(`Failed to process evaluation for applicant "${applicantId}" in field "${fieldNameOrId}":`, error);
-              
-              // Make error message more user-friendly and add to results
-              setResult(prev => {
-                // Extract just the error type for a cleaner message
-                let errorType = "processing error";
-                if (error.message?.includes("Missing final ranking")) {
-                  errorType = "missing rating";
-                } else if (error.message?.includes("Non-integer final ranking")) {
-                  errorType = "invalid rating format";
-                }
-                
-                return `${prev}\n⚠️ Error processing applicant "${applicantId}" in field "${fieldNameOrId}": ${errorType}`;
-              });
-              
-              throw error;
-            }
-          }),
-        );
-
-        // Count successes and failures for this batch
-        const batchSuccesses = batchResults.filter(
-          (r) => r.status === "fulfilled",
-        );
-        const batchFailures = batchResults.filter(
-          (r) => r.status === "rejected",
-        );
-
-        successCount += batchSuccesses.length;
-        failureCount += batchFailures.length;
-        failures.push(...batchFailures);
-
-        // Update the UI to show progress
-        setResult(`Processed ${successCount}/${evaluationPromises.length} applicants (${skippedApplicants.length} skipped entirely)`);
-        
-        // No delay between batches to maximize throughput
-        // If Airtable rate limits become an issue, we can add it back
-      }
-
-      // Update the UI with final results
-      // Create a more detailed summary message
-      let summaryMessage = `Successfully created ${successCount} evaluation(s).`;
-      
-      if (failureCount > 0) {
-        summaryMessage += ` Failed ${failureCount} times.`;
-        
-        // Extract and display up to 3 unique error types from failures
-        const uniqueErrors = new Map();
-        failures.forEach(failure => {
-          const errorMessage = failure.reason?.message || "Unknown error";
-          // Extract field and applicant info if available
-          const fieldMatch = errorMessage.match(/field "([^"]+)"/);
-          const applicantMatch = errorMessage.match(/applicant "([^"]+)"/);
-          
-          if (fieldMatch && applicantMatch) {
-            // Determine the error type
-            let errorType = "other";
-            if (errorMessage.includes("Missing final ranking")) {
-              errorType = "missing_rating";
-            } else if (errorMessage.includes("Non-integer final ranking")) {
-              errorType = "invalid_rating";
-            }
-            
-            const key = `${fieldMatch[1]}:${errorType}`;
-            if (!uniqueErrors.has(key)) {
-              uniqueErrors.set(key, {
-                field: fieldMatch[1],
-                errorType,
-                count: 0
-              });
-            }
-            uniqueErrors.get(key).count++;
-          }
-        });
-        
-        // Add summary of most common errors
-        if (uniqueErrors.size > 0) {
-          summaryMessage += " Common issues:";
-          
-          Array.from(uniqueErrors.entries())
-            .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 3)
-            .forEach(([_, info]) => {
-              // Get human-readable error message
-              let errorDescription = "";
-              if (info.errorType === "missing_rating") {
-                errorDescription = " (missing rating)";
-              } else if (info.errorType === "invalid_rating") {
-                errorDescription = " (invalid rating format)";
-              }
-              summaryMessage += `\n- ${info.count} failures in field "${info.field}"${errorDescription}`;
-            });
-            
-          summaryMessage += "\nSee console logs for complete details.";
-        }
+        setRunning(false);
+        return;
       }
       
-      setResult(summaryMessage);
+      // Original behavior for processing evaluations
+      const evaluationWritingPromises = await Promise.allSettled(
+        evaluateApplicants(applicantsToProcess, preset, setProgress).map(
+          async (evaluationPromise) => {
+            const evaluation = await evaluationPromise;
+            console.log(
+              `Evaluated applicant ${evaluation[preset.evaluationApplicantField]?.[0]?.id}, uploading to Airtable...`,
+            );
+            // It would be more efficient to do this as a batch. However, this caused us far more trouble that it was worth with the Airtable API - hitting size limits etc.
+            // Retrying helps handle other Airtable rate limits or intermittent faults
+            return pRetry(() => evaluationTable.createRecordAsync(evaluation));
+          },
+        ),
+      );
+      const successes = evaluationWritingPromises.filter(
+        (p) => p.status === "fulfilled",
+      );
+      const failures = evaluationWritingPromises.filter(
+        (p) => p.status === "rejected",
+      );
+      failures.forEach((f) => console.error("Failed to evaluate applicant", f));
+      
+      // Include information about skipped applicants in the result
+      setResult(
+        `Successfully created ${successes.length} evaluation(s) of ${applicantsToProcess.length} applicants. ${skippedApplicants.length} applicants were skipped entirely.${failures.length !== 0 ? ` Failed ${failures.length} times. See console logs for failure details.` : ""}`,
+      );
     } catch (error) {
       const errorMessage =
         "Error: " + (error instanceof Error ? error.message : String(error));

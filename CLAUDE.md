@@ -1,5 +1,11 @@
 # SPAR AI Evaluator - Development Guidelines
 
+## Important Guidelines for Claude
+- NEVER commit changes without explicit permission
+- Always run type-checking and linting before submitting changes
+- Explain significant performance optimizations
+- Break large changes into smaller logical commits
+
 ## Commands
 - Build/run: `bun run start` or `bun run start:applications`
 - Deploy: `bun run deploy`

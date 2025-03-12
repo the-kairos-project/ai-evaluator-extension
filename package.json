@@ -6,7 +6,7 @@
     "postinstall": "shx cp -n lib/env.template.ts lib/env.ts",
     "start": "bun run start:applications",
     "start:applications": "block run --remote applications",
-    "type-check": "tsc --noEmit --esModuleInterop --jsx react frontend/**.tsx lib/**.ts",
+    "type-check": "tsc --noEmit --pretty",
     "test": "jest --passWithNoTests",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx frontend lib",
     "deploy": "bun deploy.js"
