@@ -1,21 +1,17 @@
-import {
-  Icon,
-  initializeBlock,
-  loadScriptFromURLAsync
-} from "@airtable/blocks/ui";
-import { Tab } from "@headlessui/react";
-import React, { Fragment } from "react";
-import { IconName } from "@airtable/blocks/dist/types/src/ui/icon_config";
-import { PresetManager } from "./components/PresetManager";
-import { MainPage } from "./MainPage";
+import { Icon, initializeBlock, loadScriptFromURLAsync } from '@airtable/blocks/ui';
+import { Tab } from '@headlessui/react';
+import React, { Fragment } from 'react';
+import { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
+import { PresetManager } from './components/PresetManager';
+import { MainPage } from './MainPage';
 
-const MyTabLink = ({ icon, label }: { icon: IconName, label: string }) => {
+const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
   return (
     <Tab as={Fragment}>
       {({ selected }) => (
         <button
           className={
-            "flex px-2 py-1 " + (selected ? "text-slate-50" : "text-slate-400")
+            'flex px-2 py-1 ' + (selected ? 'text-slate-50' : 'text-slate-400')
           }
         >
           <Icon name={icon} size={16} />
@@ -26,7 +22,7 @@ const MyTabLink = ({ icon, label }: { icon: IconName, label: string }) => {
       )}
     </Tab>
   );
-}
+};
 
 function App() {
   return (
@@ -48,6 +44,6 @@ function App() {
   );
 }
 
-loadScriptFromURLAsync("https://cdn.tailwindcss.com").then(async () => {
+loadScriptFromURLAsync('https://cdn.tailwindcss.com').then(async () => {
   initializeBlock(() => <App />);
 });

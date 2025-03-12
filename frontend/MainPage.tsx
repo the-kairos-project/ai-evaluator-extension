@@ -10,19 +10,19 @@ import {
   Text,
   useBase,
   ViewPickerSynced,
-} from "@airtable/blocks/ui";
-import React, { useState, useMemo } from "react";
+} from '@airtable/blocks/ui';
+import React, { useState, useMemo } from 'react';
 
-import { Preset, upsertPreset, useSelectedPreset } from "../lib/preset";
-import { globalConfig } from "@airtable/blocks";
+import { Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
+import { globalConfig } from '@airtable/blocks';
 import {
   Field,
   FieldType,
   Record as AirtableRecord,
   Table,
-} from "@airtable/blocks/models";
-import { evaluateApplicants, SetProgress } from "../lib/evaluateApplicants";
-import pRetry from "p-retry";
+} from '@airtable/blocks/models';
+import { evaluateApplicants, SetProgress } from '../lib/evaluateApplicants';
+import pRetry from 'p-retry';
 
 // Fast precheck function to filter out applicants that don't need processing
 const quickPrecheck = async (
@@ -67,7 +67,7 @@ const quickPrecheck = async (
       for (const inputFieldId of Array.from(dependencyMap.keys())) {
         // If any required field has a value, we need to process this applicant
         const value = applicant.getCellValueAsString(inputFieldId);
-        if (value && value.trim() !== "") {
+        if (value && value.trim() !== '') {
           shouldProcess = true;
           break;
         }
@@ -168,9 +168,7 @@ export const MainPage = () => {
             batchProgress * (currentBatch.length / applicantsToProcess.length);
           const overallProgressOffset = batchStart / applicantsToProcess.length;
 
-          setProgress(
-            () => 0.1 + 0.9 * (overallProgressOffset + batchContribution)
-          );
+          setProgress(() => 0.1 + 0.9 * (overallProgressOffset + batchContribution));
         }
       );
 
@@ -181,11 +179,10 @@ export const MainPage = () => {
             const evaluation = await evaluationPromise;
 
             // Check if evaluation contains applicant ID before logging
-            const applicantId =
-              evaluation[preset.evaluationApplicantField]?.[0]?.id;
+            const applicantId = evaluation[preset.evaluationApplicantField]?.[0]?.id;
             console.log(
               `Evaluated applicant ${
-                applicantId || "unknown"
+                applicantId || 'unknown'
               }, uploading to Airtable...`
             );
 
@@ -193,7 +190,7 @@ export const MainPage = () => {
             await pRetry(() => evaluationTable.createRecordAsync(evaluation));
             return { success: true };
           } catch (error) {
-            console.error("Failed to evaluate applicant", error);
+            console.error('Failed to evaluate applicant', error);
             return { success: false, error };
           }
         })
@@ -201,7 +198,7 @@ export const MainPage = () => {
 
       // Count results from this batch
       const batchSuccesses = batchResults.filter(
-        (r) => r.status === "fulfilled" && r.value?.success
+        (r) => r.status === 'fulfilled' && r.value?.success
       ).length;
       const batchFailures = batchResults.length - batchSuccesses;
 
@@ -224,16 +221,13 @@ export const MainPage = () => {
     setRunning(true);
     setProgress(0);
     setResult(null);
-    console.log("Running preset", preset);
+    console.log('Running preset', preset);
     try {
-      if (!applicantTable) throw new Error("Could not access applicant table");
-      if (!evaluationTable)
-        throw new Error("Could not access evaluation table");
-      if (!preset.applicantFields.length)
-        throw new Error("No input fields selected");
-      if (!preset.evaluationFields.length)
-        throw new Error("No output fields selected");
-      setResult("Getting applicant records...");
+      if (!applicantTable) throw new Error('Could not access applicant table');
+      if (!evaluationTable) throw new Error('Could not access evaluation table');
+      if (!preset.applicantFields.length) throw new Error('No input fields selected');
+      if (!preset.evaluationFields.length) throw new Error('No output fields selected');
+      setResult('Getting applicant records...');
       const applicantView = applicantTable.getViewById(preset.applicantViewId);
       const applicantRecords = await applicantView.selectRecordsAsync();
       setResult(
@@ -278,17 +272,15 @@ export const MainPage = () => {
       setResult(
         `Successfully created ${successes} evaluation(s) of ${
           applicantsToProcess.length
-        } applicants. ${
-          skippedApplicants.length
-        } applicants were skipped entirely.${
+        } applicants. ${skippedApplicants.length} applicants were skipped entirely.${
           failures !== 0
             ? ` Failed ${failures} times. See console logs for failure details.`
-            : ""
+            : ''
         }`
       );
     } catch (error) {
       const errorMessage =
-        "Error: " + (error instanceof Error ? error.message : String(error));
+        'Error: ' + (error instanceof Error ? error.message : String(error));
       setResult(errorMessage);
       setRunning(false);
     }
@@ -299,16 +291,10 @@ export const MainPage = () => {
     <div className="mb-24">
       <FormField label="Applicant table">
         <TablePickerSynced
-          globalConfigKey={["presets", preset.name, "applicantTableId"]}
+          globalConfigKey={['presets', preset.name, 'applicantTableId']}
           onChange={() => {
-            globalConfig.setAsync(
-              ["presets", preset.name, "applicantViewId"],
-              ""
-            );
-            globalConfig.setAsync(
-              ["presets", preset.name, "applicantFields"],
-              []
-            );
+            globalConfig.setAsync(['presets', preset.name, 'applicantViewId'], '');
+            globalConfig.setAsync(['presets', preset.name, 'applicantFields'], []);
           }}
         />
       </FormField>
@@ -316,18 +302,14 @@ export const MainPage = () => {
         <>
           <FormField label="Applicant view">
             <ViewPickerSynced
-              globalConfigKey={["presets", preset.name, "applicantViewId"]}
+              globalConfigKey={['presets', preset.name, 'applicantViewId']}
               table={applicantTable}
             />
           </FormField>
           <FormField label="Answer (input) fields">
             <div className="flex flex-col gap-2">
               {preset.applicantFields.map((_, index) => (
-                <ApplicantFieldEditor
-                  key={index}
-                  preset={preset}
-                  index={index}
-                />
+                <ApplicantFieldEditor key={index} preset={preset} index={index} />
               ))}
               <ApplicantFieldEditor
                 key={preset.applicantFields.length}
@@ -341,14 +323,11 @@ export const MainPage = () => {
 
       <FormField label="Evaluation table">
         <TablePickerSynced
-          globalConfigKey={["presets", preset.name, "evaluationTableId"]}
+          globalConfigKey={['presets', preset.name, 'evaluationTableId']}
           onChange={() => {
+            globalConfig.setAsync(['presets', preset.name, 'evaluationFields'], []);
             globalConfig.setAsync(
-              ["presets", preset.name, "evaluationFields"],
-              []
-            );
-            globalConfig.setAsync(
-              ["presets", preset.name, "evaluationLogsField"],
+              ['presets', preset.name, 'evaluationLogsField'],
               undefined
             );
           }}
@@ -359,11 +338,7 @@ export const MainPage = () => {
           <FormField label="Score (output) fields">
             <div className="flex flex-col gap-2">
               {preset.evaluationFields.map((_, index) => (
-                <EvaluationFieldEditor
-                  key={index}
-                  preset={preset}
-                  index={index}
-                />
+                <EvaluationFieldEditor key={index} preset={preset} index={index} />
               ))}
               <EvaluationFieldEditor
                 key={preset.evaluationFields.length}
@@ -375,11 +350,7 @@ export const MainPage = () => {
           <FormField label="Applicant field">
             <FieldPickerSynced
               allowedTypes={[FieldType.MULTIPLE_RECORD_LINKS]}
-              globalConfigKey={[
-                "presets",
-                preset.name,
-                "evaluationApplicantField",
-              ]}
+              globalConfigKey={['presets', preset.name, 'evaluationApplicantField']}
               table={evaluationTable}
             />
           </FormField>
@@ -390,7 +361,7 @@ export const MainPage = () => {
                 FieldType.MULTILINE_TEXT,
                 FieldType.RICH_TEXT,
               ]}
-              globalConfigKey={["presets", preset.name, "evaluationLogsField"]}
+              globalConfigKey={['presets', preset.name, 'evaluationLogsField']}
               table={evaluationTable}
               shouldAllowPickingNone={true}
             />
@@ -419,11 +390,8 @@ interface FieldEditorProps {
   index: number;
 }
 
-const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({
-  preset,
-  index,
-}) => {
-  const applicantField = preset.applicantFields[index] ?? { fieldId: "" };
+const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => {
+  const applicantField = preset.applicantFields[index] ?? { fieldId: '' };
 
   const base = useBase();
   const applicantTable = base.getTableByIdIfExists(preset.applicantTableId);
@@ -432,10 +400,10 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({
     applicantTable.getFieldByIdIfExists(applicantField.fieldId)
   );
   const [questionName, setQuestionName] = useState<string>(
-    applicantField.questionName ?? ""
+    applicantField.questionName ?? ''
   );
 
-  const saveField = (applicantField: Preset["applicantFields"][number]) => {
+  const saveField = (applicantField: Preset['applicantFields'][number]) => {
     // delete
     if (!applicantField.fieldId) {
       upsertPreset({
@@ -487,13 +455,10 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({
   );
 };
 
-const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
-  preset,
-  index,
-}) => {
+const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => {
   const evaluationField = preset.evaluationFields[index] ?? {
-    fieldId: "",
-    criteria: "",
+    fieldId: '',
+    criteria: '',
     dependsOnInputField: undefined,
   };
 
@@ -504,23 +469,19 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
   const [field, setField] = useState<Field>(
     evaluationTable.getFieldByIdIfExists(evaluationField.fieldId)
   );
-  const [criteria, setCriteria] = useState<string>(
-    evaluationField.criteria ?? ""
-  );
+  const [criteria, setCriteria] = useState<string>(evaluationField.criteria ?? '');
   // We don't use the dependsOnField value directly, but we need the setter
   const [, setDependsOnField] = useState<Field | null>(
     evaluationField.dependsOnInputField
-      ? applicantTable?.getFieldByIdIfExists(
-          evaluationField.dependsOnInputField
-        )
+      ? applicantTable?.getFieldByIdIfExists(evaluationField.dependsOnInputField)
       : null
   );
 
   // Create options for the dependency dropdown from the applicant fields
   const inputFieldOptions = useMemo(() => {
-    if (!applicantTable) return [{ value: "", label: "None" }];
+    if (!applicantTable) return [{ value: '', label: 'None' }];
 
-    const options = [{ value: "", label: "None (always evaluate)" }];
+    const options = [{ value: '', label: 'None (always evaluate)' }];
 
     preset.applicantFields.forEach(({ fieldId }) => {
       const field = applicantTable.getFieldByIdIfExists(fieldId);
@@ -535,7 +496,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
     return options;
   }, [applicantTable, preset.applicantFields]);
 
-  const saveField = (evaluationField: Preset["evaluationFields"][number]) => {
+  const saveField = (evaluationField: Preset['evaluationFields'][number]) => {
     // delete
     if (!evaluationField.fieldId) {
       upsertPreset({
@@ -590,14 +551,12 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({
       >
         <Select
           options={inputFieldOptions}
-          value={evaluationField.dependsOnInputField || ""}
+          value={evaluationField.dependsOnInputField || ''}
           onChange={(value) => {
-            const dependsOnInputField = value === "" ? undefined : value;
+            const dependsOnInputField = value === '' ? undefined : value;
             setDependsOnField(
               dependsOnInputField
-                ? applicantTable?.getFieldByIdIfExists(
-                    dependsOnInputField as string
-                  )
+                ? applicantTable?.getFieldByIdIfExists(dependsOnInputField as string)
                 : null
             );
             saveField({

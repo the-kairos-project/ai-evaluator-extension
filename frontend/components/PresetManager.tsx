@@ -1,13 +1,14 @@
+import { Button, Dialog, FormField, Heading, Input, Select } from '@airtable/blocks/ui';
+import React, { useMemo, useState } from 'react';
 import {
-  Button,
-  Dialog,
-  FormField,
-  Heading,
-  Input,
-  Select,
-} from "@airtable/blocks/ui";
-import React, { useMemo, useState } from "react";
-import { defaultPreset, deletePreset, getPresets, getSelectedPreset, selectPreset, upsertPreset, useSelectedPreset } from "../../lib/preset";
+  defaultPreset,
+  deletePreset,
+  getPresets,
+  getSelectedPreset,
+  selectPreset,
+  upsertPreset,
+  useSelectedPreset,
+} from '../../lib/preset';
 
 const PresetChooser = () => {
   const selectedPreset = getSelectedPreset();
@@ -23,11 +24,11 @@ const PresetChooser = () => {
   }, [presets]);
 
   const [newPresetDialogOpen, setNewPresetDialogOpen] = useState(false);
-  const [newPresetName, setNewPresetName] = useState("");
+  const [newPresetName, setNewPresetName] = useState('');
 
   const closeNewPresetDialog = () => {
     setNewPresetDialogOpen(false);
-    setNewPresetName("");
+    setNewPresetName('');
   };
 
   const [, forceUpdate] = useState(0);
@@ -40,11 +41,11 @@ const PresetChooser = () => {
           className="min-w-[5rem] rounded-r-none"
           options={[
             ...(presetOptions || []),
-            { label: "+ Create new preset", value: "new" },
+            { label: '+ Create new preset', value: 'new' },
           ]}
           value={selectedPreset.name}
           onChange={(value) => {
-            if (value === "new") {
+            if (value === 'new') {
               setNewPresetDialogOpen(true);
             } else {
               selectPreset(value as string);
@@ -67,7 +68,7 @@ const PresetChooser = () => {
               <Button
                 onClick={() => {
                   closeNewPresetDialog();
-                  upsertPreset({ ...defaultPreset, name: newPresetName })
+                  upsertPreset({ ...defaultPreset, name: newPresetName });
                   selectPreset(newPresetName);
                   forceUpdate(Date.now());
                 }}
@@ -91,7 +92,7 @@ export const PresetManager = () => {
     setEditPresetName(selectedPreset.name);
     setEditPresetJson(JSON.stringify(selectedPreset));
     setEditPresetDialogOpen(true);
-  }
+  };
   const closeEditPresetDialog = () => {
     setEditPresetDialogOpen(false);
   };
@@ -103,7 +104,7 @@ export const PresetManager = () => {
       <PresetChooser />
       <Button
         icon="edit"
-        className={`bg-slate-200 text-slate-700 h-7 rounded-l-none border-solid border border-y-0 border-r-0 ${showDeletePreset ? "rounded-none" : ""}`}
+        className={`bg-slate-200 text-slate-700 h-7 rounded-l-none border-solid border border-y-0 border-r-0 ${showDeletePreset ? 'rounded-none' : ''}`}
         onClick={() => openEditPresetDialog()}
         aria-label="Edit preset"
       ></Button>
@@ -143,9 +144,15 @@ export const PresetManager = () => {
               onClick={() => {
                 closeEditPresetDialog();
                 if (editPresetJson) {
-                  upsertPreset({ ...JSON.parse(editPresetJson), name: editPresetName }, selectedPreset.name)
+                  upsertPreset(
+                    { ...JSON.parse(editPresetJson), name: editPresetName },
+                    selectedPreset.name
+                  );
                 } else {
-                  upsertPreset({ ...selectedPreset, name: editPresetName }, selectedPreset.name)
+                  upsertPreset(
+                    { ...selectedPreset, name: editPresetName },
+                    selectedPreset.name
+                  );
                 }
               }}
             >
@@ -155,5 +162,5 @@ export const PresetManager = () => {
         </Dialog>
       )}
     </div>
-  )
-}
+  );
+};

@@ -8,8 +8,8 @@
 // - we have limits on API usage set for both platforms
 // - the risk is people using our API credits / getting free access to APIs, which is not as critical (as e.g. applicant's personal data)
 export const env = {
-    // Get from https://platform.openai.com/settings/profile?tab=api-keys
-    'OPENAI_API_KEY': 'sk-...',
-    // Get from https://console.anthropic.com/settings/keys
-    'ANTHROPIC_API_KEY': 'sk-ant-api...'
-}
+  // Get from https://platform.openai.com/settings/profile?tab=api-keys
+  OPENAI_API_KEY: 'sk-...',
+  // Get from https://console.anthropic.com/settings/keys
+  ANTHROPIC_API_KEY: 'sk-ant-api...',
+};

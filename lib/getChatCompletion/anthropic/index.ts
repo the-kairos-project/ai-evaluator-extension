@@ -1,30 +1,24 @@
-import pLimit from "p-limit";
-import {
-  anthropicRequestConcurrency,
-  anthropicApiKey,
-  anthropicModel,
-} from "./config";
-import { GetChatCompletion } from "..";
+import pLimit from 'p-limit';
+import { anthropicRequestConcurrency, anthropicApiKey, anthropicModel } from './config';
+import { GetChatCompletion } from '..';
 
 const globalRateLimit = pLimit(anthropicRequestConcurrency);
 
 export const getChatCompletion: GetChatCompletion = async (messages) => {
-  const lastMessageIsSystem = messages[messages.length - 1]?.role === "system";
+  const lastMessageIsSystem = messages[messages.length - 1]?.role === 'system';
 
   return globalRateLimit(async () => {
-    const response = await fetch("http://localhost:8010/proxy/v1/messages", {
-      method: "POST",
+    const response = await fetch('http://localhost:8010/proxy/v1/messages', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": anthropicApiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': anthropicApiKey,
       },
       body: JSON.stringify({
         model: anthropicModel,
         messages: lastMessageIsSystem ? messages.slice(0, -1) : messages,
-        system: lastMessageIsSystem
-          ? messages[messages.length - 1].content
-          : undefined,
+        system: lastMessageIsSystem ? messages[messages.length - 1].content : undefined,
         max_tokens: 500,
       }),
     });

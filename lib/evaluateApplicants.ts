@@ -1,8 +1,8 @@
-import { Record as AirtableRecord } from "@airtable/blocks/models";
-import { Preset } from "./preset";
-import { Prompt } from "./getChatCompletion";
-import { getChatCompletion } from "./getChatCompletion/openai";
-import pRetry from "p-retry";
+import { Record as AirtableRecord } from '@airtable/blocks/models';
+import { Preset } from './preset';
+import { Prompt } from './getChatCompletion';
+import { getChatCompletion } from './getChatCompletion/openai';
+import pRetry from 'p-retry';
 
 export type SetProgress = (updater: (prev: number) => number) => void;
 
@@ -21,18 +21,16 @@ const getApplicantIdentifier = (applicant: Record<string, string>): string => {
   // Try to find name or id field first
   const nameField = Object.entries(applicant).find(
     ([key, value]) =>
-      (key.toLowerCase().includes("name") ||
-        key.toLowerCase().includes("id")) &&
-      value,
+      (key.toLowerCase().includes('name') || key.toLowerCase().includes('id')) && value
   );
 
-  return nameField ? nameField[1].substring(0, 30) : "unknown";
+  return nameField ? nameField[1].substring(0, 30) : 'unknown';
 };
 
 export const evaluateApplicants = (
   applicants: AirtableRecord[],
   preset: Preset,
-  setProgress: SetProgress,
+  setProgress: SetProgress
 ): Promise<Record<string, unknown>>[] => {
   // Create a field name mapping for better error messages - optimize for performance
   const fieldNameMap = new Map<string, string>();
@@ -74,7 +72,7 @@ export const evaluateApplicants = (
 
   // Simple status log with core details
   console.log(
-    `Processing ${applicants.length} applicants with ${preset.evaluationFields.length} evaluation fields`,
+    `Processing ${applicants.length} applicants with ${preset.evaluationFields.length} evaluation fields`
   );
 
   // Preprocess dependency information for faster checks
@@ -93,13 +91,13 @@ export const evaluateApplicants = (
 
   // Check if any fields need to be evaluated at all
   const hasFieldsToEvaluate = preset.evaluationFields.some(
-    ({ dependsOnInputField }) => !dependsOnInputField,
+    ({ dependsOnInputField }) => !dependsOnInputField
   );
 
   // Simple dependency info log
   if (dependencyMap.size > 0) {
     console.log(
-      `Field dependencies: ${dependencyMap.size} input fields have dependent output fields`,
+      `Field dependencies: ${dependencyMap.size} input fields have dependent output fields`
     );
   }
 
@@ -108,7 +106,7 @@ export const evaluateApplicants = (
     // Create a progress updater specific to this applicant
     const innerSetProgress: SetProgress = (updater) => {
       setProgress(
-        () => 0.1 + (0.9 / applicants.length) * updater(0), // Start at 10% (after precheck)
+        () => 0.1 + (0.9 / applicants.length) * updater(0) // Start at 10% (after precheck)
       );
     };
 
@@ -134,12 +132,12 @@ export const evaluateApplicants = (
     dependencyMap.forEach((dependentFields, inputFieldId) => {
       // Get the value from the plain record
       const key =
-        preset.applicantFields.find((f) => f.fieldId === inputFieldId)
-          ?.questionName || inputFieldId;
-      const value = plainRecord[key] || plainRecord[inputFieldId] || "";
+        preset.applicantFields.find((f) => f.fieldId === inputFieldId)?.questionName ||
+        inputFieldId;
+      const value = plainRecord[key] || plainRecord[inputFieldId] || '';
 
       // If empty, mark all dependent fields to be skipped
-      if (!value || value.trim() === "") {
+      if (!value || value.trim() === '') {
         dependentFields.forEach((fieldId) => skipFields.add(fieldId));
       }
     });
@@ -150,7 +148,7 @@ export const evaluateApplicants = (
       preset,
       innerSetProgress,
       skipFields,
-      getFieldName, // Pass the field name lookup function
+      getFieldName // Pass the field name lookup function
     );
 
     result[preset.evaluationApplicantField] = [{ id: applicant.id }];
@@ -160,7 +158,7 @@ export const evaluateApplicants = (
 
 const convertToPlainRecord = (
   applicant: AirtableRecord,
-  preset: Preset,
+  preset: Preset
 ): Record<string, string> => {
   const record = {};
 
@@ -193,13 +191,11 @@ const convertToPlainRecord = (
  * @param applicant Record containing applicant data
  * @returns Formatted string for LLM input
  */
-const stringifyApplicantForLLM = (
-  applicant: Record<string, string>,
-): string => {
+const stringifyApplicantForLLM = (applicant: Record<string, string>): string => {
   return Object.entries(applicant)
     .filter(([, value]) => value)
     .map(([key, value]) => `### ${key}\n\n${value}`)
-    .join("\n\n");
+    .join('\n\n');
 };
 
 /**
@@ -209,10 +205,7 @@ const stringifyApplicantForLLM = (
  * @param maxLength Maximum allowed length (default: 95000)
  * @returns Truncated text with notice if needed
  */
-const truncateForAirtable = (
-  text: string,
-  maxLength: number = 95000,
-): string => {
+const truncateForAirtable = (text: string, maxLength: number = 95000): string => {
   if (text.length <= maxLength) return text;
 
   const truncationNote =
@@ -225,7 +218,7 @@ const evaluateApplicant = async (
   preset: Preset,
   setProgress: SetProgress,
   skipFields: Set<string> = new Set(), // Fields to skip (faster approach)
-  getFieldName: (fieldId: string) => string = (id) => id, // Function to get field name from ID
+  getFieldName: (fieldId: string) => string = (id) => id // Function to get field name from ID
 ): Promise<Record<string, number | string>> => {
   const logsByField = {};
   const skippedFields = {};
@@ -236,8 +229,7 @@ const evaluateApplicant = async (
       // Fast path: check if this field should be skipped based on the pre-computed skipFields
       if (skipFields.has(fieldId)) {
         // Record it as skipped for logging purposes
-        skippedFields[fieldId] =
-          `Skipped because the required input field was empty`;
+        skippedFields[fieldId] = `Skipped because the required input field was empty`;
 
         // Update progress and return null (we'll filter it out later)
         setProgress((prev) => prev + 1 / preset.evaluationFields.length);
@@ -261,13 +253,7 @@ const evaluateApplicant = async (
       // Use consistent retry pattern
       const { ranking, transcript } = await pRetry(
         async () =>
-          evaluateItem(
-            applicantString,
-            criteria,
-            fieldId,
-            applicantId,
-            fieldName,
-          ),
+          evaluateItem(applicantString, criteria, fieldId, applicantId, fieldName),
         {
           // Consistent error format for easier extraction
           onFailedAttempt: (error) => {
@@ -275,18 +261,18 @@ const evaluateApplicant = async (
             // This consistent format makes it easy to extract field and applicant info
             console.error(`${fieldName} for ${applicantId} - ${error.message}`);
           },
-        },
+        }
       );
 
       // Truncate each individual transcript to avoid exceeding Airtable limits
       logsByField[fieldId] = truncateForAirtable(
         `# ${fieldId}\n\n` + transcript,
-        30000,
+        30000
       );
 
       setProgress((prev) => prev + 1 / preset.evaluationFields.length);
       return [fieldId, ranking] as const;
-    }),
+    })
   );
 
   // Filter out null results (skipped evaluations) so they don't appear in the output record
@@ -310,7 +296,7 @@ const evaluateApplicant = async (
 
         return logsByField[fieldId];
       })
-      .join("\n\n");
+      .join('\n\n');
 
     // Ensure the combined logs also fit within Airtable's limits
     logs = truncateForAirtable(logs);
@@ -323,9 +309,9 @@ const evaluateApplicant = async (
 // TODO: test if returning response in JSON is better
 const extractFinalRanking = (
   text: string,
-  rankingKeyword = "FINAL_RANKING",
+  rankingKeyword = 'FINAL_RANKING',
   fieldIdentifier?: string,
-  applicantIdentifier?: string,
+  applicantIdentifier?: string
 ): number => {
   // Look for normal rating
   const regex = new RegExp(`${rankingKeyword}\\s*=\\s*([\\d\\.]+)`);
@@ -335,7 +321,7 @@ const extractFinalRanking = (
     const asInt = parseInt(match[1]);
     if (Math.abs(asInt - parseFloat(match[1])) > 0.01) {
       throw new Error(
-        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ""}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ""}`,
+        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
       );
     }
     return parseInt(match[1]);
@@ -343,7 +329,7 @@ const extractFinalRanking = (
 
   // No rating found
   throw new Error(
-    `Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ""}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ""}`,
+    `Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
   );
 };
 
@@ -352,17 +338,17 @@ const evaluateItem = async (
   criteriaString: string,
   fieldIdentifier?: string, // Add optional field identifier for better error logging
   applicantIdentifier?: string, // Add optional applicant identifier for better error logging
-  fieldName?: string, // Add optional human-readable field name
+  fieldName?: string // Add optional human-readable field name
 ): Promise<{
   transcript: string;
   ranking: number;
 }> => {
   // Convert explicit line breaks to actual line breaks in the criteria (since they come from an HTML input)
-  criteriaString = criteriaString.replace(/<br>/g, "\n");
+  criteriaString = criteriaString.replace(/<br>/g, '\n');
   const prompt: Prompt = [
-    { role: "user", content: applicantString },
+    { role: 'user', content: applicantString },
     {
-      role: "system",
+      role: 'system',
       content: `Evaluate the application above, based on the following rubric: ${criteriaString}
 
 You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
@@ -374,19 +360,19 @@ First explain your reasoning thinking step by step. Then output your final answe
   const completion = await getChatCompletion(prompt);
 
   // Create a clean transcript format
-  const transcript = [...prompt, { role: "assistant", content: completion }]
+  const transcript = [...prompt, { role: 'assistant', content: completion }]
     .map((message) => `## ${message.role}\n\n${message.content}`)
-    .join("\n\n");
-    
+    .join('\n\n');
+
   try {
     // Try to extract the ranking, if it fails it will throw an error
     const ranking = extractFinalRanking(
       completion,
-      "FINAL_RANKING",
+      'FINAL_RANKING',
       fieldName || fieldIdentifier, // Use the human-readable field name if available
-      applicantIdentifier,
+      applicantIdentifier
     );
-    
+
     return {
       transcript,
       ranking,
@@ -394,10 +380,10 @@ First explain your reasoning thinking step by step. Then output your final answe
   } catch (error) {
     // Always log the full LLM response when the ranking extraction fails
     console.group(`📋 Full LLM Response for ${fieldName || fieldIdentifier}:`);
-    console.log("Error:", error.message);
+    console.log('Error:', error.message);
     console.log(completion);
     console.groupEnd();
-    
+
     // Re-throw the error so it can be handled by the retry mechanism
     throw error;
   }
