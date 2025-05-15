@@ -20,13 +20,18 @@ To start developing this extension:
 
 1. Clone this git repository
 2. Install [Node.js](https://nodejs.org/)
-3. Run `npm install`
-4. Run `npm start` (for the 'Applications' base in the BlueDot Impact AirTable account)
-5. Load the relevant base
-6. Make changes to the code and see them reflected in the app!
+3. Install [Bun](https://bun.sh/) with `curl -fsSL https://bun.sh/install | bash`
+4. Run `bun install`
+5. Configure API keys and models:
+   - Edit `lib/env.ts` with your API keys for OpenAI and/or Anthropic
+   - Configure the desired model in `lib/getChatCompletion/openai/config.ts` and/or `lib/getChatCompletion/anthropic/config.ts`
+   - Set your OpenAI organization ID if applicable
+6. Run `bun run start` (for the 'Applications' base in the BlueDot Impact AirTable account)
+7. Load the relevant base
+8. Make changes to the code and see them reflected in the app!
 
-If the changes don't appear to be updating the app, try clicking the extension name then 'Edit extension', then pasting in the server address printed to the console from step 4 (probably `https://localhost:9000`).
+If the changes don't appear to be updating the app, try clicking the extension name then 'Edit extension', then pasting in the server address printed to the console from step 6 (probably `https://localhost:9000`).
 
-Changes merged into the default branch will automatically be deployed. You can manually deploy new versions using `npm run deploy`. If you get the error `airtableApiBlockNotFound`, set up the block CLI with `npx block set-api-key` with a [personal access token](https://airtable.com/developers/web/guides/personal-access-tokens).
+Changes merged into the default branch will automatically be deployed. You can manually deploy new versions using `bun run deploy`. If you get the error `airtableApiBlockNotFound`, set up the block CLI with `npx block set-api-key` with a [personal access token](https://airtable.com/developers/web/guides/personal-access-tokens).
 
 If you want to install this on a new base see [these instructions](https://www.airtable.com/developers/apps/guides/run-in-multiple-bases).
