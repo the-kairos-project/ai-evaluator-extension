@@ -24,6 +24,7 @@ import {
 } from '@airtable/blocks/models';
 import { evaluateApplicants, type SetProgress } from '../lib/evaluateApplicants';
 import pRetry from 'p-retry';
+import { formatModelName, PROVIDER_ICONS } from '../lib/models/config';
 
 // Helper function to build dependency map
 const buildDependencyMap = (preset: Preset): Map<string, string[]> => {
@@ -312,7 +313,45 @@ export const MainPage = () => {
   };
 
   return (
-    <div className="mb-24">
+    <div className="space-y-4">
+      {/* API Keys Debug block */}
+      <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
+        <p>API Key config: <button onClick={() => {
+          import('../lib/getChatCompletion/apiKeyManager').then(module => {
+            const openAiKey = module.getOpenAiApiKey();
+            const anthropicKey = module.getAnthropicApiKey();
+            
+            const selectedProvider = module.getSelectedModelProvider();
+            const openAiModel = module.getOpenAiModelName();
+            const anthropicModel = module.getAnthropicModelName();
+            
+            const activeModelName = selectedProvider === 'openai' ? openAiModel : anthropicModel;
+            
+            // UI feedback
+            const debugInfo = document.createElement('div');
+            debugInfo.className = 'mt-2 p-1 bg-blue-100 rounded';
+            debugInfo.innerHTML = `
+              <p>${PROVIDER_ICONS[selectedProvider] || '🔧'} <strong>Provider:</strong> ${selectedProvider === 'openai' ? 'OpenAI' : 'Anthropic Claude'}</p>
+              <p>📋 <strong>Model:</strong> ${formatModelName(activeModelName)}</p>
+              <p>🔑 <strong>API Keys:</strong> 
+                OpenAI: ${openAiKey ? '✅' : '❌'}, 
+                Anthropic: ${anthropicKey ? '✅' : '❌'}
+              </p>
+            `;
+            
+            const debugDiv = document.querySelector('.mb-4.p-2.bg-gray-100.rounded.text-xs');
+            if (debugDiv) {
+              const existingInfo = debugDiv.querySelector('.mt-2.p-1.bg-blue-100.rounded');
+              if (existingInfo) {
+                existingInfo.remove();
+              }
+              debugDiv.appendChild(debugInfo);
+            }
+          });
+        }} className="underline text-blue-500">Check API Keys and Model</button></p>
+      </div>
+      {/* End API Keys Debug Block */}
+
       <FormField label="Applicant table">
         <TablePickerSynced
           globalConfigKey={['presets', preset.name, 'applicantTableId']}
@@ -331,7 +370,7 @@ export const MainPage = () => {
             />
           </FormField>
           <FormField label="Answer (input) fields">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {preset.applicantFields.map((field, index) => (
                 <ApplicantFieldEditor 
                   key={`applicant-field-${field.fieldId || ''}-${index}`} 
@@ -364,7 +403,7 @@ export const MainPage = () => {
       {evaluationTable && (
         <>
           <FormField label="Score (output) fields">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {preset.evaluationFields.map((field, index) => (
                 <EvaluationFieldEditor 
                   key={`eval-field-${field.fieldId || ''}-${index}`} 
@@ -423,6 +462,7 @@ interface FieldEditorProps {
 
 const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => {
   const applicantField = preset.applicantFields[index] ?? { fieldId: '' };
+  const isExistingField = index < preset.applicantFields.length;
 
   const base = useBase();
   const applicantTable = base.getTableByIdIfExists(preset.applicantTableId);
@@ -457,31 +497,53 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
     }
   };
 
+  const handleDelete = () => {
+    upsertPreset({
+      ...preset,
+      applicantFields: preset.applicantFields.filter((_, i) => i !== index),
+    });
+  };
+
   return (
-    <div className="p-2 border bg-white rounded shadow grid grid-cols-2 gap-2">
-      <FormField label="Source field" className="mb-0">
-        <FieldPicker
-          table={applicantTable}
-          shouldAllowPickingNone={true}
-          onChange={(field) => {
-            setField(field);
-            saveField({ ...applicantField, fieldId: field?.id });
-          }}
-          field={field}
-        />
-      </FormField>
-      <FormField label="(optional) Question name" className="mb-0">
-        <Input
-          value={questionName}
-          onChange={(event) => {
-            setQuestionName(event.target.value);
-            saveField({
-              ...applicantField,
-              questionName: event.target.value || undefined,
-            });
-          }}
-        />
-      </FormField>
+    <div className="p-3 border bg-white rounded shadow">
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Source field" className="mb-0">
+          <FieldPicker
+            table={applicantTable}
+            shouldAllowPickingNone={true}
+            onChange={(field) => {
+              setField(field);
+              saveField({ ...applicantField, fieldId: field?.id });
+            }}
+            field={field}
+          />
+        </FormField>
+        <FormField label="(optional) Question name" className="mb-0">
+          <Input
+            value={questionName}
+            onChange={(event) => {
+              setQuestionName(event.target.value);
+              saveField({
+                ...applicantField,
+                questionName: event.target.value || undefined,
+              });
+            }}
+          />
+        </FormField>
+      </div>
+      {isExistingField && (
+        <div className="mt-3 flex justify-end">
+          <Button
+            variant="danger"
+            size="small"
+            icon="trash"
+            onClick={handleDelete}
+            aria-label="Delete input field"
+          >
+            Delete
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -492,6 +554,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
     criteria: '',
     dependsOnInputField: undefined,
   };
+  const isExistingField = index < preset.evaluationFields.length;
 
   const base = useBase();
   const evaluationTable = base.getTableByIdIfExists(preset.evaluationTableId);
@@ -550,35 +613,44 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
     }
   };
 
+  const handleDelete = () => {
+    upsertPreset({
+      ...preset,
+      evaluationFields: preset.evaluationFields.filter((_, i) => i !== index),
+    });
+  };
+
   return (
-    <div className="p-2 border bg-white rounded shadow grid grid-cols-2 gap-2">
-      <FormField label="Output field" className="mb-0">
-        <FieldPicker
-          allowedTypes={[FieldType.NUMBER, FieldType.PERCENT, FieldType.RATING]}
-          table={evaluationTable}
-          shouldAllowPickingNone={true}
-          onChange={(field) => {
-            setField(field);
-            saveField({ ...evaluationField, fieldId: field?.id });
-          }}
-          field={field}
-        />
-      </FormField>
-      <FormField label="Evaluation criteria" className="mb-0">
-        <Input
-          value={criteria}
-          onChange={(event) => {
-            setCriteria(event.target.value);
-            saveField({
-              ...evaluationField,
-              criteria: event.target.value || undefined,
-            });
-          }}
-        />
-      </FormField>
+    <div className="p-3 border bg-white rounded shadow">
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Output field" className="mb-0">
+          <FieldPicker
+            allowedTypes={[FieldType.NUMBER, FieldType.PERCENT, FieldType.RATING]}
+            table={evaluationTable}
+            shouldAllowPickingNone={true}
+            onChange={(field) => {
+              setField(field);
+              saveField({ ...evaluationField, fieldId: field?.id });
+            }}
+            field={field}
+          />
+        </FormField>
+        <FormField label="Evaluation criteria" className="mb-0">
+          <Input
+            value={criteria}
+            onChange={(event) => {
+              setCriteria(event.target.value);
+              saveField({
+                ...evaluationField,
+                criteria: event.target.value || undefined,
+              });
+            }}
+          />
+        </FormField>
+      </div>
       <FormField
         label="Only evaluate if this input field is not empty:"
-        className="mb-0 col-span-2"
+        className="mb-0 mt-3"
       >
         <Select
           options={inputFieldOptions}
@@ -597,6 +669,19 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
           }}
         />
       </FormField>
+      {isExistingField && (
+        <div className="mt-3 flex justify-end">
+          <Button
+            variant="danger"
+            size="small"
+            icon="trash"
+            onClick={handleDelete}
+            aria-label="Delete output field"
+          >
+            Delete
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

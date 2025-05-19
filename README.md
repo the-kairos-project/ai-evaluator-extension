@@ -35,3 +35,39 @@ If the changes don't appear to be updating the app, try clicking the extension n
 Changes merged into the default branch will automatically be deployed. You can manually deploy new versions using `bun run deploy`. If you get the error `airtableApiBlockNotFound`, set up the block CLI with `npx block set-api-key` with a [personal access token](https://airtable.com/developers/web/guides/personal-access-tokens).
 
 If you want to install this on a new base see [these instructions](https://www.airtable.com/developers/apps/guides/run-in-multiple-bases).
+
+## Models and API Keys
+
+This extension supports both OpenAI and Anthropic Claude models. You can configure:
+
+1. Which AI provider to use (OpenAI or Anthropic Claude)
+2. Which specific model to use for each provider
+3. API keys for both providers
+
+The application has a centralized model configuration system located in `lib/models/config.ts`. This makes it easy to:
+
+- Add new models when providers release them
+- Update model parameters when providers change them
+- Mark models as unavailable if needed
+
+### Supported Models
+
+#### OpenAI
+- GPT-4o
+- GPT-4o mini
+- GPT-o3 mini
+
+#### Anthropic
+- Claude 3.7 Sonnet
+- Claude 3.5 Sonnet
+- Claude 3.5 Haiku
+
+### Updating Models
+
+To add or update models, modify the `OPENAI_MODELS` and `ANTHROPIC_MODELS` arrays in `lib/models/config.ts`. Each model requires:
+
+- `label`: Display name
+- `value`: API identifier
+- `description`: Short description
+- `emoji`: Representative emoji
+- `isAvailable`: Whether this model is available
