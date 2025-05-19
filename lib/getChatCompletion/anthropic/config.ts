@@ -1,7 +1,8 @@
-import { env } from '../../env';
+import { getAnthropicApiKey, getAnthropicModelName } from '../apiKeyManager';
 
-export const anthropicApiKey = env.ANTHROPIC_API_KEY;
-// Model to use: https://docs.anthropic.com/en/docs/models-overview
-export const anthropicModel = 'CONFIGURE_MODEL_HERE';
+// Use the API key manager to get the key (from config or env.ts)
+export const anthropicApiKey = getAnthropicApiKey();
+// Get model name from global config or fall back to default
+export const anthropicModel = getAnthropicModelName();
 // Maximum number of open requests at any one time. Higher = faster, but more likely to hit rate limits.
 export const anthropicRequestConcurrency = 30;
