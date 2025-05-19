@@ -1,8 +1,9 @@
-import { env } from '../../env';
+import { getOpenAiApiKey, getOpenAiModelName } from '../apiKeyManager';
 
-export const openAiApiKey = env.OPENAI_API_KEY;
-export const openAiOrganisation = 'CONFIGURE_ORGANISATION_HERE';
-// Model to use: https://platform.openai.com/docs/models/model-endpoint-compatibility
-export const openAiModel = 'CONFIGURE_MODEL_HERE';
-// Maximum number of open requests at any one time. Higher = faster, but more likely to hit rate limits. From trial and error, at tier 3 with GPT-4 turbo, 30 works well.
+// Use the API key manager to get the key (from config or env.ts)
+export const openAiApiKey = getOpenAiApiKey();
+export const openAiOrganisation = ''; // Organization ID is optional
+// Get model name from global config or fall back to default
+export const openAiModel = getOpenAiModelName();
+// Maximum number of open requests at any one time. Higher = faster, but more likely to hit rate limits.
 export const openAiRequestConcurrency = 30;
