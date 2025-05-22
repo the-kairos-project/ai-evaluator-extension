@@ -25,6 +25,8 @@ import {
 import { evaluateApplicants, type SetProgress } from '../lib/evaluateApplicants';
 import pRetry from 'p-retry';
 import { formatModelName, PROVIDER_ICONS } from '../lib/models/config';
+import { FormFieldWithTooltip, useGuidedMode } from './components/helpSystem';
+import { estimateBatchCost, formatCostEstimate } from '../lib/estimation';
 
 // Helper function to build dependency map
 const buildDependencyMap = (preset: Preset): Map<string, string[]> => {
@@ -99,18 +101,52 @@ const quickPrecheck = async (
     skippedApplicants,
   };
 };
+
+// Helper function to get current model from settings
+const getCurrentModel = (): string => {
+  const selectedProvider = globalConfig.get('selectedModel') as string || 'openai';
+  if (selectedProvider === 'openai') {
+    return globalConfig.get('openAiModel') as string || 'gpt-4o';
+  } else {
+    return globalConfig.get('anthropicModel') as string || 'claude-3-5-sonnet-20241022';
+  }
+};
+
+// Helper function to get preferred currency from settings
+const getPreferredCurrency = (): string => {
+  return globalConfig.get('preferredCurrency') as string || 'USD';
+};
+
 const renderPreviewText = (
   numberOfApplicants: number,
-  numberOfEvaluationCriteria: number
+  numberOfEvaluationCriteria: number,
+  applicantsData?: Record<string, string>[],
+  evaluationFields?: Array<{ criteria: string }>
 ) => {
   const numberOfItems = numberOfApplicants * numberOfEvaluationCriteria;
-  const timeEstimateMins = ((numberOfItems * 0.9) / 60).toFixed(1); // speed roughly for gpt-4-1106-preview, at 30 request concurrency
-  const costEstimateGbp = (numberOfItems * 0.011).toFixed(2); // pricing roughly for gpt-4-1106-preview
-  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated time: ${timeEstimateMins} min. Estimated cost: £${costEstimateGbp}. To cancel, please close the entire browser tab.`;
+  
+  // Try to provide realistic cost estimate if we have the data
+  if (applicantsData && evaluationFields && applicantsData.length > 0) {
+    try {
+      const currentModel = getCurrentModel();
+      const preferredCurrency = getPreferredCurrency();
+      const estimate = estimateBatchCost(applicantsData, evaluationFields, currentModel, preferredCurrency);
+      const costText = formatCostEstimate(estimate);
+      
+      return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria. ${costText}. To cancel, please close the entire browser tab.`;
+    } catch (error) {
+      console.warn('Cost estimation failed, using fallback:', error);
+    }
+  }
+  
+  // Fallback to old estimation if new system fails
+  const costEstimateGbp = (numberOfItems * 0.011).toFixed(2);
+  return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated cost: £${costEstimateGbp} (rough estimate). To cancel, please close the entire browser tab.`;
 };
 
 export const MainPage = () => {
   const preset = useSelectedPreset();
+  const showGuidedHelp = useGuidedMode();
 
   const base = useBase();
   const applicantTable = base.getTableByIdIfExists(preset.applicantTableId);
@@ -184,43 +220,87 @@ export const MainPage = () => {
 
       // Process each evaluation and write to Airtable
       const batchResults = await Promise.allSettled(
-        batchEvaluationPromises.map(async (evaluationPromise) => {
+        batchEvaluationPromises.map(async (evaluationPromise, index) => {
+          const applicantNumber = batchStart + index + 1;
+          const startTime = Date.now();
+          
           try {
+            setResult(
+              `Processing batch ${batchNumber} of ${totalBatches} - ` +
+              `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...`
+            );
+
             const evaluation = await evaluationPromise;
 
             // Check if evaluation contains applicant ID before logging
             const applicantId = evaluation[preset.evaluationApplicantField]?.[0]?.id;
+            const evaluationTime = Date.now() - startTime;
+            
             console.log(
-              `Evaluated applicant ${
+              `✅ Evaluated applicant ${applicantNumber} (ID: ${
                 applicantId || 'unknown'
-              }, uploading to Airtable...`
+              }) in ${evaluationTime}ms, uploading to Airtable...`
+            );
+
+            setResult(
+              `Processing batch ${batchNumber} of ${totalBatches} - ` +
+              `Saving applicant ${applicantNumber} to Airtable...`
             );
 
             // Write to Airtable with retry
+            const airtableStartTime = Date.now();
             await pRetry(() => evaluationTable.createRecordAsync(evaluation));
-            return { success: true };
+            const airtableTime = Date.now() - airtableStartTime;
+            
+            const totalTime = Date.now() - startTime;
+            console.log(
+              `✅ Saved applicant ${applicantNumber} to Airtable in ${airtableTime}ms ` +
+              `(total: ${totalTime}ms)`
+            );
+
+            return { success: true, applicantNumber, evaluationTime, airtableTime, totalTime };
           } catch (error) {
-            console.error('Failed to evaluate applicant', error);
-            return { success: false, error };
+            const totalTime = Date.now() - startTime;
+            console.error(`❌ Failed to process applicant ${applicantNumber} after ${totalTime}ms:`, error);
+            return { success: false, error, applicantNumber, totalTime };
           }
         })
       );
 
-      // Count results from this batch
+      // Count results from this batch and calculate timing
       const batchSuccesses = batchResults.filter(
         (r) => r.status === 'fulfilled' && r.value?.success
       ).length;
       const batchFailures = batchResults.length - batchSuccesses;
 
+      // Calculate timing statistics for successful operations
+      const successfulResults = batchResults
+        .filter(r => r.status === 'fulfilled' && r.value?.success)
+        .map(r => (r as any).value);
+      
+      const timingStats = successfulResults.length > 0 ? {
+        avgEvaluationTime: Math.round(successfulResults.reduce((sum, r) => sum + r.evaluationTime, 0) / successfulResults.length),
+        avgAirtableTime: Math.round(successfulResults.reduce((sum, r) => sum + r.airtableTime, 0) / successfulResults.length),
+        avgTotalTime: Math.round(successfulResults.reduce((sum, r) => sum + r.totalTime, 0) / successfulResults.length)
+      } : null;
+
       totalSuccesses += batchSuccesses;
       totalFailures += batchFailures;
       processedCount += currentBatch.length;
 
+      // Enhanced batch completion message with timing
+      let batchMessage = `Batch ${batchNumber}/${totalBatches} complete: ${batchSuccesses} successes, ${batchFailures} failures.`;
+      if (timingStats) {
+        batchMessage += ` Avg times - Evaluation: ${timingStats.avgEvaluationTime}ms, Airtable: ${timingStats.avgAirtableTime}ms, Total: ${timingStats.avgTotalTime}ms`;
+      }
+      
+      console.log(`📊 ${batchMessage}`);
+      
       // Update the user with progress after each batch
       setResult(
         `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ` +
           `${totalSuccesses} successes, ${totalFailures} failures so far. ` +
-          `Batch ${batchNumber}/${totalBatches} complete.`
+          batchMessage
       );
     }
 
@@ -242,12 +322,35 @@ export const MainPage = () => {
     const applicantView = applicantTable.getViewById(preset.applicantViewId);
     const applicantRecords = await applicantView.selectRecordsAsync();
     
-    setResult(
-      renderPreviewText(
-        applicantRecords.records.length,
-        preset.evaluationFields.length
-      )
+    const previewText = renderPreviewText(
+      applicantRecords.records.length,
+      preset.evaluationFields.length,
+      applicantRecords.records.map(record => {
+        const applicantData: Record<string, string> = {};
+        // Convert applicant fields to string format for cost estimation
+        for (const field of preset.applicantFields) {
+          try {
+            const key = field.questionName || field.fieldId;
+            const value = record.getCellValueAsString(field.fieldId) || '';
+            applicantData[key] = value;
+          } catch (error) {
+            // Skip fields that can't be read
+          }
+        }
+        return applicantData;
+      }),
+      preset.evaluationFields.map(field => ({ criteria: field.criteria }))
     );
+    setResult(previewText);
+    
+    // Log detailed processing plan
+    console.log(`📋 Processing Plan:`);
+    console.log(`• Applicants to evaluate: ${applicantRecords.records.length}`);
+    console.log(`• Evaluation fields: ${preset.evaluationFields.length}`);
+    console.log(`• Total API calls needed: ${applicantRecords.records.length * preset.evaluationFields.length}`);
+    console.log(`• Estimated batch size: ${Math.max(1, Math.floor(30 / preset.evaluationFields.length))}`);
+    console.log(`• Expected batches: ${Math.ceil(applicantRecords.records.length / Math.max(1, Math.floor(30 / preset.evaluationFields.length)))}`);
+    console.log(previewText);
 
     // Fast precheck to eliminate applicants that don't need processing
     setResult(`Starting pre-check for ${applicantRecords.records.length} applicants...`);
@@ -291,6 +394,42 @@ export const MainPage = () => {
       successCount: successes,
       failureCount: failures
     };
+  };
+
+  const estimateCost = async () => {
+    try {
+      validatePrerequisites();
+      
+      // Get applicant records for cost estimation
+      setResult('Calculating cost estimate...');
+      const applicantView = applicantTable.getViewById(preset.applicantViewId);
+      const applicantRecords = await applicantView.selectRecordsAsync();
+      
+      const previewText = renderPreviewText(
+        applicantRecords.records.length,
+        preset.evaluationFields.length,
+        applicantRecords.records.map(record => {
+          const applicantData: Record<string, string> = {};
+          // Convert applicant fields to string format for cost estimation
+          for (const field of preset.applicantFields) {
+            try {
+              const key = field.questionName || field.fieldId;
+              const value = record.getCellValueAsString(field.fieldId) || '';
+              applicantData[key] = value;
+            } catch (error) {
+              // Skip fields that can't be read
+            }
+          }
+          return applicantData;
+        }),
+        preset.evaluationFields.map(field => ({ criteria: field.criteria }))
+      );
+      
+      setResult(previewText);
+    } catch (error) {
+      const errorMessage = `Cost estimation error: ${error instanceof Error ? error.message : String(error)}`;
+      setResult(errorMessage);
+    }
   };
 
   const run = async () => {
@@ -352,7 +491,11 @@ export const MainPage = () => {
       </div>
       {/* End API Keys Debug Block */}
 
-      <FormField label="Applicant table">
+      <FormFieldWithTooltip 
+        label="Applicant table" 
+        helpKey="applicantTable"
+        showGuidedHelp={showGuidedHelp}
+      >
         <TablePickerSynced
           globalConfigKey={['presets', preset.name, 'applicantTableId']}
           onChange={() => {
@@ -360,15 +503,19 @@ export const MainPage = () => {
             globalConfig.setAsync(['presets', preset.name, 'applicantFields'], []);
           }}
         />
-      </FormField>
+      </FormFieldWithTooltip>
       {applicantTable && (
         <>
-          <FormField label="Applicant view">
+          <FormFieldWithTooltip 
+            label="Applicant view" 
+            helpKey="applicantView"
+            showGuidedHelp={showGuidedHelp}
+          >
             <ViewPickerSynced
               globalConfigKey={['presets', preset.name, 'applicantViewId']}
               table={applicantTable}
             />
-          </FormField>
+          </FormFieldWithTooltip>
           <FormField label="Answer (input) fields">
             <div className="flex flex-col gap-3">
               {preset.applicantFields.map((field, index) => (
@@ -388,7 +535,11 @@ export const MainPage = () => {
         </>
       )}
 
-      <FormField label="Evaluation table">
+      <FormFieldWithTooltip 
+        label="Evaluation table" 
+        helpKey="evaluationTable"
+        showGuidedHelp={showGuidedHelp}
+      >
         <TablePickerSynced
           globalConfigKey={['presets', preset.name, 'evaluationTableId']}
           onChange={() => {
@@ -399,7 +550,7 @@ export const MainPage = () => {
             );
           }}
         />
-      </FormField>
+      </FormFieldWithTooltip>
       {evaluationTable && (
         <>
           <FormField label="Score (output) fields">
@@ -418,14 +569,22 @@ export const MainPage = () => {
               />
             </div>
           </FormField>
-          <FormField label="Applicant field">
+          <FormFieldWithTooltip 
+            label="Applicant field" 
+            helpKey="applicantField"
+            showGuidedHelp={showGuidedHelp}
+          >
             <FieldPickerSynced
               allowedTypes={[FieldType.MULTIPLE_RECORD_LINKS]}
               globalConfigKey={['presets', preset.name, 'evaluationApplicantField']}
               table={evaluationTable}
             />
-          </FormField>
-          <FormField label="(optional) Logs field">
+          </FormFieldWithTooltip>
+          <FormFieldWithTooltip 
+            label="(optional) Logs field" 
+            helpKey="logsField"
+            showGuidedHelp={showGuidedHelp}
+          >
             <FieldPickerSynced
               allowedTypes={[
                 FieldType.SINGLE_LINE_TEXT,
@@ -436,19 +595,30 @@ export const MainPage = () => {
               table={evaluationTable}
               shouldAllowPickingNone={true}
             />
-          </FormField>
+          </FormFieldWithTooltip>
         </>
       )}
 
-      <Button
-        type="button"
-        variant="primary"
-        icon="play"
-        onClick={run}
-        disabled={running}
-      >
-        Run
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="default"
+          icon="formula"
+          onClick={estimateCost}
+          disabled={running}
+        >
+          Estimate Cost
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          icon="play"
+          onClick={run}
+          disabled={running}
+        >
+          Run
+        </Button>
+      </div>
       {running && <ProgressBar className="my-2" progress={progress} />}
       {result && <Text className="my-2">{result}</Text>}
     </div>
@@ -463,6 +633,7 @@ interface FieldEditorProps {
 const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => {
   const applicantField = preset.applicantFields[index] ?? { fieldId: '' };
   const isExistingField = index < preset.applicantFields.length;
+  const showGuidedHelp = useGuidedMode();
 
   const base = useBase();
   const applicantTable = base.getTableByIdIfExists(preset.applicantTableId);
@@ -507,7 +678,12 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
   return (
     <div className="p-3 border bg-white rounded shadow">
       <div className="grid grid-cols-2 gap-3">
-        <FormField label="Source field" className="mb-0">
+        <FormFieldWithTooltip 
+          label="Source field" 
+          helpKey="sourceField"
+          showGuidedHelp={showGuidedHelp}
+          className="mb-0"
+        >
           <FieldPicker
             table={applicantTable}
             shouldAllowPickingNone={true}
@@ -517,8 +693,13 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
             }}
             field={field}
           />
-        </FormField>
-        <FormField label="(optional) Question name" className="mb-0">
+        </FormFieldWithTooltip>
+        <FormFieldWithTooltip 
+          label="(optional) Question name" 
+          helpKey="questionName"
+          showGuidedHelp={showGuidedHelp}
+          className="mb-0"
+        >
           <Input
             value={questionName}
             onChange={(event) => {
@@ -529,7 +710,7 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
               });
             }}
           />
-        </FormField>
+        </FormFieldWithTooltip>
       </div>
       {isExistingField && (
         <div className="mt-3 flex justify-end">
@@ -555,6 +736,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
     dependsOnInputField: undefined,
   };
   const isExistingField = index < preset.evaluationFields.length;
+  const showGuidedHelp = useGuidedMode();
 
   const base = useBase();
   const evaluationTable = base.getTableByIdIfExists(preset.evaluationTableId);
@@ -623,7 +805,12 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
   return (
     <div className="p-3 border bg-white rounded shadow">
       <div className="grid grid-cols-2 gap-3">
-        <FormField label="Output field" className="mb-0">
+        <FormFieldWithTooltip 
+          label="Output field" 
+          helpKey="outputField"
+          showGuidedHelp={showGuidedHelp}
+          className="mb-0"
+        >
           <FieldPicker
             allowedTypes={[FieldType.NUMBER, FieldType.PERCENT, FieldType.RATING]}
             table={evaluationTable}
@@ -634,8 +821,13 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
             }}
             field={field}
           />
-        </FormField>
-        <FormField label="Evaluation criteria" className="mb-0">
+        </FormFieldWithTooltip>
+        <FormFieldWithTooltip 
+          label="Evaluation criteria" 
+          helpKey="evaluationCriteria"
+          showGuidedHelp={showGuidedHelp}
+          className="mb-0"
+        >
           <Input
             value={criteria}
             onChange={(event) => {
@@ -646,10 +838,12 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
               });
             }}
           />
-        </FormField>
+        </FormFieldWithTooltip>
       </div>
-      <FormField
+      <FormFieldWithTooltip
         label="Only evaluate if this input field is not empty:"
+        helpKey="dependencyField"
+        showGuidedHelp={showGuidedHelp}
         className="mb-0 mt-3"
       >
         <Select
@@ -668,7 +862,7 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
             });
           }}
         />
-      </FormField>
+      </FormFieldWithTooltip>
       {isExistingField && (
         <div className="mt-3 flex justify-end">
           <Button

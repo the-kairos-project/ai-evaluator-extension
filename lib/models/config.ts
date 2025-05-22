@@ -17,7 +17,7 @@ export type ModelOption = {
   isAvailable: boolean;
 };
 
-// OpenAI Models (Updated May 2025)
+// OpenAI Models (Updated December 2024)
 export const OPENAI_MODELS: ModelOption[] = [
   {
     label: 'GPT-4o',
@@ -34,16 +34,23 @@ export const OPENAI_MODELS: ModelOption[] = [
     isAvailable: true,
   },
   {
-    label: 'o3mini',
-    value: 'gpt-4-o3mini',
-    description: 'Next generation, ultra-economical model',
+    label: 'GPT-4 Turbo',
+    value: 'gpt-4-turbo',
+    description: 'Previous generation flagship model',
+    emoji: '💨',
+    isAvailable: true,
+  },
+  {
+    label: 'GPT-3.5 Turbo',
+    value: 'gpt-3.5-turbo',
+    description: 'Reliable and economical option',
     emoji: '💡',
     isAvailable: true,
   },
 ];
 
-// Get default OpenAI model
-export const DEFAULT_OPENAI_MODEL = OPENAI_MODELS[0].value;
+// Get default OpenAI model (using gpt-4o-mini for cost efficiency)
+export const DEFAULT_OPENAI_MODEL = OPENAI_MODELS[1].value; // gpt-4o-mini
 
 // Anthropic Models (Updated May 2025)
 export const ANTHROPIC_MODELS: ModelOption[] = [
