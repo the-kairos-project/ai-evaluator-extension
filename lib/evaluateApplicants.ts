@@ -1,7 +1,7 @@
 import type { Record as AirtableRecord } from '@airtable/blocks/models';
 import type { Preset } from './preset';
-import type { Prompt } from './getChatCompletion';
 import { getChatCompletion } from './getChatCompletion';
+import { getActiveTemplate, getPromptSettings, buildPrompt, getRankingKeyword } from './prompts';
 import pRetry from 'p-retry';
 
 export type SetProgress = (updater: (prev: number) => number) => void;
@@ -24,7 +24,17 @@ const getApplicantIdentifier = (applicant: Record<string, string>): string => {
       (key.toLowerCase().includes('name') || key.toLowerCase().includes('id')) && value
   );
 
-  return nameField ? nameField[1].substring(0, 30) : 'unknown';
+  if (nameField) {
+    return nameField[1].substring(0, 30);
+  }
+
+  // If no name/id field, use the first non-empty field value as identifier
+  const firstField = Object.entries(applicant).find(([, value]) => value && value.trim());
+  if (firstField) {
+    return `${firstField[0]}: ${firstField[1].substring(0, 20)}...`;
+  }
+
+  return 'unknown';
 };
 
 // Helper to get field names from the table
@@ -278,22 +288,41 @@ const evaluateApplicant = async (
       const applicantId = getApplicantIdentifier(applicant);
       const fieldName = getFieldName(fieldId);
 
-      // Use simpler debug logging
-      console.debug(`Evaluating ${fieldName} for ${applicantId}`);
+      // Enhanced logging for API calls
+      const fieldStartTime = Date.now();
+      console.log(`🔄 Starting evaluation: ${fieldName} for ${applicantId}`);
 
       // Use consistent retry pattern
       const { ranking, transcript } = await pRetry(
-        async () =>
-          evaluateItem(applicantString, criteria, fieldId, applicantId, fieldName),
+        async () => {
+          const apiCallStartTime = Date.now();
+          console.log(`🌐 Making API call for ${fieldName} (${applicantId})`);
+          
+          const result = await evaluateItem(applicantString, criteria, fieldId, applicantId, fieldName);
+          
+          const apiCallTime = Date.now() - apiCallStartTime;
+          console.log(`✅ API call completed for ${fieldName} (${applicantId}) in ${apiCallTime}ms - Ranking: ${result.ranking}`);
+          
+          return result;
+        },
         {
-          // Consistent error format for easier extraction
+          retries: 3,
+          factor: 2,
+          minTimeout: 1000,
+          maxTimeout: 5000,
+          // Enhanced error logging with retry information
           onFailedAttempt: (error) => {
-            // Format: "FIELD_NAME for APPLICANT_ID - ERROR_MESSAGE"
-            // This consistent format makes it easy to extract field and applicant info
-            console.error(`${fieldName} for ${applicantId} - ${error.message}`);
+            const apiCallTime = Date.now() - fieldStartTime;
+            console.error(
+              `🔄 Retry ${error.attemptNumber} for ${fieldName} (${applicantId}) ` +
+              `after ${apiCallTime}ms - ${error.message}`
+            );
           },
         }
       );
+
+      const fieldTotalTime = Date.now() - fieldStartTime;
+      console.log(`✅ Completed evaluation: ${fieldName} for ${applicantId} in ${fieldTotalTime}ms`);
 
       // Truncate each individual transcript to avoid exceeding Airtable limits
       logsByField[fieldId] = truncateForAirtable(
@@ -355,7 +384,15 @@ const extractFinalRanking = (
         `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
       );
     }
-    return Number.parseInt(match[1]);
+    
+    // Validate rating is within 1-5 range (Airtable rating field constraint)
+    if (asInt < 1 || asInt > 5) {
+      throw new Error(
+        `Rating ${asInt} is out of range (must be 1-5) (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
+      );
+    }
+    
+    return asInt;
   }
 
   // No rating found
@@ -376,17 +413,24 @@ const evaluateItem = async (
 }> => {
   // Convert explicit line breaks to actual line breaks in the criteria (since they come from an HTML input)
   const processedCriteriaString = criteriaString.replace(/<br>/g, '\n');
-  const prompt: Prompt = [
-    { role: 'user', content: applicantString },
-    {
-      role: 'system',
-      content: `Evaluate the application above, based on the following rubric: ${processedCriteriaString}
-
-You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
-
-First explain your reasoning thinking step by step. Then output your final answer by stating 'FINAL_RANKING = ' and then the relevant integer between the minimum and maximum values in the rubric.`,
-    },
-  ];
+  
+  // Get current prompt settings and template
+  const settings = getPromptSettings();
+  const template = getActiveTemplate();
+  
+  // Build prompt using the template system
+  const promptConfig = {
+    template,
+    variables: {
+      criteriaString: processedCriteriaString,
+      rankingKeyword: settings.rankingKeyword,
+      additionalInstructions: settings.additionalInstructions
+    }
+  };
+  
+  const prompt = buildPrompt(applicantString, promptConfig);
+  const rankingKeyword = getRankingKeyword(promptConfig);
+  
   // Reduce debug logging to just essentials
   const completion = await getChatCompletion(prompt);
 
@@ -399,7 +443,7 @@ First explain your reasoning thinking step by step. Then output your final answe
     // Try to extract the ranking, if it fails it will throw an error
     const ranking = extractFinalRanking(
       completion,
-      'FINAL_RANKING',
+      rankingKeyword, // Use dynamic ranking keyword from settings
       fieldName || fieldIdentifier, // Use the human-readable field name if available
       applicantIdentifier
     );
