@@ -1,39 +1,43 @@
-name: ci
+name: CI
 
-on: push
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 10
-    strategy:
-      matrix:
-        node-version: [18]
-
+  ci:
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout ${{ github.sha }}
-        uses: actions/checkout@v2
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v1
+      # Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Setup Bun
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ matrix.node-version }}
-      - name: "Install dependencies"
-        run: npm ci
-      - name: "Lint"
-        run: npm run lint --if-present
-      - name: "Build"
-        run: npm run build --if-present
-      - name: "Test"
-        run: npm run test --if-present
-      - name: "Configure for deployment"
-        if: github.ref == 'refs/heads/master'
-        run: |
-          echo "$PROD_ENV" > lib/env.ts
-        env:
-          PROD_ENV: ${{ secrets.PROD_ENV }}
-      - name: "Deploy"
-        if: github.ref == 'refs/heads/master'
-        run: npm run deploy
-        env:
-          AIRTABLE_PERSONAL_ACCESS_TOKEN: ${{ secrets.AIRTABLE_PERSONAL_ACCESS_TOKEN }}
-
+          bun-version: latest
+      
+      # Cache dependencies
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      
+      # Install dependencies
+      - name: Install dependencies
+        run: bun install
+      
+      # Run type checking
+      - name: Type check
+        run: bun run type-check
+      
+      # Run Biome CI checks (lint, format, etc.)
+      - name: Run Biome CI
+        run: bun run biome:ci
