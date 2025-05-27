@@ -1,17 +1,21 @@
 import { globalConfig } from '@airtable/blocks';
 import { env } from '../env';
-import { ModelProvider, DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL } from '../models/config';
+import {
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  type ModelProvider,
+} from '../models/config';
 
 /**
  * Gets the user-selected model provider from global config or defaults to OpenAI
  */
 export function getSelectedModelProvider(): ModelProvider {
   const provider = globalConfig.get('selectedModel') as string;
-  
+
   if (provider === 'anthropic' || provider === 'openai') {
     return provider as ModelProvider;
   }
-  
+
   return 'openai';
 }
 
@@ -45,4 +49,4 @@ export function getOpenAiModelName(): string {
 export function getAnthropicModelName(): string {
   const modelName = globalConfig.get('anthropicModel') as string;
   return modelName || DEFAULT_ANTHROPIC_MODEL;
-} 
+}
