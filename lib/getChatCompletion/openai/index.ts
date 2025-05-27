@@ -1,11 +1,7 @@
 import pLimit from 'p-limit';
-import {
-  openAiApiKey,
-  openAiModel,
-  openAiOrganisation,
-} from './config';
-import { getCurrentConcurrency } from '../../concurrency/config';
 import type { GetChatCompletion } from '..';
+import { getCurrentConcurrency } from '../../concurrency/config';
+import { openAiApiKey, openAiModel, openAiOrganisation } from './config';
 
 // Create rate limiter with dynamic concurrency
 let globalRateLimit = pLimit(getCurrentConcurrency());
@@ -17,7 +13,9 @@ const updateRateLimit = () => {
   if (currentConcurrency !== lastConcurrency) {
     globalRateLimit = pLimit(currentConcurrency);
     lastConcurrency = currentConcurrency;
-    console.log(`🔄 Updated OpenAI rate limit to ${currentConcurrency} concurrent calls`);
+    console.log(
+      `🔄 Updated OpenAI rate limit to ${currentConcurrency} concurrent calls`
+    );
   }
   return globalRateLimit;
 };
@@ -27,7 +25,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
     try {
       const apiUrl = 'https://api.openai.com/v1/chat/completions';
       console.log(`🌐 DIRECT OpenAI API call to: ${apiUrl} (no proxy)`);
-      
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -44,14 +42,18 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
 
       if (!response.ok || response.status >= 400) {
         const errorText = await response.text();
-        throw new Error(`HTTP error calling OpenAI API: got status ${response.status}. Response: ${errorText}`);
+        throw new Error(
+          `HTTP error calling OpenAI API: got status ${response.status}. Response: ${errorText}`
+        );
       }
 
       const data = await response.json();
       return data.choices[0].message.content;
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        throw new Error('Network error: Unable to reach OpenAI API. Check your internet connection.');
+        throw new Error(
+          'Network error: Unable to reach OpenAI API. Check your internet connection.'
+        );
       }
       throw error;
     }

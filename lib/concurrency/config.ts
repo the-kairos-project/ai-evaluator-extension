@@ -13,23 +13,23 @@ export const CONCURRENCY_OPTIONS = [
   {
     label: 'Minimal (5 calls)',
     value: 5,
-    description: 'Very conservative, lowest chance of rate limits'
+    description: 'Very conservative, lowest chance of rate limits',
   },
   {
     label: 'Conservative (10 calls)',
     value: 10,
-    description: 'Safe and stable, good for testing'
+    description: 'Safe and stable, good for testing',
   },
   {
-    label: 'Balanced (20 calls)', 
+    label: 'Balanced (20 calls)',
     value: 20,
-    description: 'Good balance of speed and stability (default)'
+    description: 'Good balance of speed and stability (default)',
   },
   {
     label: 'Aggressive (30 calls)',
     value: 30,
-    description: 'Faster but may hit rate limits on some plans'
-  }
+    description: 'Faster but may hit rate limits on some plans',
+  },
 ];
 
 /**
@@ -51,9 +51,11 @@ export const saveConcurrency = async (concurrency: number): Promise<void> => {
  * Get concurrency option details for display
  */
 export const getConcurrencyOption = (value: number) => {
-  return CONCURRENCY_OPTIONS.find(option => option.value === value) || {
-    label: `Custom (${value} calls)`,
-    value,
-    description: 'Custom concurrency setting'
-  };
-}; 
+  return (
+    CONCURRENCY_OPTIONS.find((option) => option.value === value) || {
+      label: `Custom (${value} calls)`,
+      value,
+      description: 'Custom concurrency setting',
+    }
+  );
+};

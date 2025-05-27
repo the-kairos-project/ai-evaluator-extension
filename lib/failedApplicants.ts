@@ -3,7 +3,7 @@
  */
 
 import { globalConfig } from '@airtable/blocks';
-import { type Record as AirtableRecord } from '@airtable/blocks/models';
+import type { Record as AirtableRecord } from '@airtable/blocks/models';
 
 export interface FailedApplicant {
   recordId: string;
@@ -34,23 +34,24 @@ export const addFailedApplicants = async (
   applicantFields?: Array<{ fieldId: string; questionName?: string }> // For extracting applicant data
 ): Promise<void> => {
   const existing = getFailedApplicants();
-  
-  const newFailed: FailedApplicant[] = applicants.map(applicant => {
+
+  const newFailed: FailedApplicant[] = applicants.map((applicant) => {
     // Extract applicant name and key data for display
     let applicantName = applicant.id; // Fallback to ID
     const applicantData: Record<string, string> = {};
-    
+
     if (applicantFields) {
       for (const field of applicantFields) {
         try {
           const value = applicant.getCellValueAsString(field.fieldId) || '';
           const key = field.questionName || field.fieldId;
           applicantData[key] = value;
-          
+
           // Use first non-empty field as the display name
           if (!applicantName || applicantName === applicant.id) {
-            if (value && value.trim()) {
-              applicantName = value.length > 50 ? value.substring(0, 47) + '...' : value;
+            if (value?.trim()) {
+              applicantName =
+                value.length > 50 ? `${value.substring(0, 47)}...` : value;
             }
           }
         } catch (error) {
@@ -58,7 +59,7 @@ export const addFailedApplicants = async (
         }
       }
     }
-    
+
     return {
       recordId: applicant.id,
       reason,
@@ -66,15 +67,17 @@ export const addFailedApplicants = async (
       batchNumber,
       preset: presetName,
       applicantName,
-      applicantData
+      applicantData,
     };
   });
-  
+
   const updated = [...existing, ...newFailed];
-  
+
   await globalConfig.setAsync('failedApplicants', updated as any);
-  
-  console.log(`📝 Added ${newFailed.length} failed applicants to retry list. Total: ${updated.length}`);
+
+  console.log(
+    `📝 Added ${newFailed.length} failed applicants to retry list. Total: ${updated.length}`
+  );
 };
 
 /**
@@ -90,11 +93,13 @@ export const clearFailedApplicants = async (): Promise<void> => {
  */
 export const removeFailedApplicants = async (recordIds: string[]): Promise<void> => {
   const existing = getFailedApplicants();
-  const filtered = existing.filter(failed => !recordIds.includes(failed.recordId));
-  
+  const filtered = existing.filter((failed) => !recordIds.includes(failed.recordId));
+
   await globalConfig.setAsync('failedApplicants', filtered as any);
-  
-  console.log(`✅ Removed ${recordIds.length} successfully retried applicants from failed list`);
+
+  console.log(
+    `✅ Removed ${recordIds.length} successfully retried applicants from failed list`
+  );
 };
 
 /**
@@ -102,4 +107,4 @@ export const removeFailedApplicants = async (recordIds: string[]): Promise<void>
  */
 export const getFailedApplicantsCount = (): number => {
   return getFailedApplicants().length;
-}; 
+};
