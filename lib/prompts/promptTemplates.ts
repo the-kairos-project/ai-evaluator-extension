@@ -33,7 +33,7 @@ IMPORTANT RATING CONSTRAINTS:
 
 First explain your reasoning thinking step by step. Then output your final answer by stating '{rankingKeyword} = ' and then the relevant integer between 1 and 5.{additionalInstructions}`,
   rankingKeyword: 'FINAL_RANKING',
-  additionalInstructions: ''
+  additionalInstructions: '',
 };
 
 // Default settings for new installations
@@ -41,15 +41,13 @@ export const DEFAULT_PROMPT_SETTINGS = {
   selectedTemplate: ACADEMIC_TEMPLATE.id,
   customTemplate: null as PromptTemplate | null,
   rankingKeyword: ACADEMIC_TEMPLATE.rankingKeyword,
-  additionalInstructions: ''
+  additionalInstructions: '',
 };
 
 // Available templates (starting with just one)
-export const AVAILABLE_TEMPLATES: PromptTemplate[] = [
-  ACADEMIC_TEMPLATE
-];
+export const AVAILABLE_TEMPLATES: PromptTemplate[] = [ACADEMIC_TEMPLATE];
 
 // Get template by ID with fallback to default
 export const getTemplate = (templateId: string): PromptTemplate => {
-  return AVAILABLE_TEMPLATES.find(t => t.id === templateId) || ACADEMIC_TEMPLATE;
-}; 
+  return AVAILABLE_TEMPLATES.find((t) => t.id === templateId) || ACADEMIC_TEMPLATE;
+};

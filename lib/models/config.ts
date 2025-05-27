@@ -1,6 +1,6 @@
 /**
  * Models configuration file
- * 
+ *
  * This file centralizes all model definitions and makes it easy to update them
  * when new models are released or old ones are deprecated.
  */
@@ -74,35 +74,35 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
 export const DEFAULT_ANTHROPIC_MODEL = ANTHROPIC_MODELS[2].value;
 
 export const MODEL_PROVIDERS = [
-  { 
+  {
     id: 'openai',
     name: 'OpenAI',
     emoji: '🤖',
     models: OPENAI_MODELS,
-    defaultModel: DEFAULT_OPENAI_MODEL
+    defaultModel: DEFAULT_OPENAI_MODEL,
   },
   {
-    id: 'anthropic', 
+    id: 'anthropic',
     name: 'Anthropic Claude',
     emoji: '🧠',
     models: ANTHROPIC_MODELS,
-    defaultModel: DEFAULT_ANTHROPIC_MODEL
-  }
+    defaultModel: DEFAULT_ANTHROPIC_MODEL,
+  },
 ];
 
 // Get a dictionary of emoji icons for each provider
 export const PROVIDER_ICONS: Record<string, string> = {
   openai: '🤖',
-  anthropic: '🧠'
+  anthropic: '🧠',
 };
 
 // Helper function to format a model ID into a user-friendly name
 export function formatModelName(modelId: string): string {
-  const openAiModel = OPENAI_MODELS.find(model => model.value === modelId);
+  const openAiModel = OPENAI_MODELS.find((model) => model.value === modelId);
   if (openAiModel) return openAiModel.label;
-  
-  const anthropicModel = ANTHROPIC_MODELS.find(model => model.value === modelId);
+
+  const anthropicModel = ANTHROPIC_MODELS.find((model) => model.value === modelId);
   if (anthropicModel) return anthropicModel.label;
-  
+
   return modelId;
-} 
+}

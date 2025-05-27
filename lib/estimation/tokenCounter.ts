@@ -18,10 +18,10 @@ export interface TokenCount {
  */
 export const estimateTokens = (text: string): number => {
   if (!text) return 0;
-  
+
   // Remove extra whitespace and count characters
   const cleanText = text.trim().replace(/\s+/g, ' ');
-  
+
   // Approximate: 4 characters per token (conservative estimate)
   // This accounts for common English text patterns
   return Math.ceil(cleanText.length / 4);
@@ -38,28 +38,28 @@ export const estimateEvaluationTokens = (
 ): TokenCount => {
   // Count applicant data tokens
   const applicantText = Object.values(applicantData)
-    .filter(value => value && value.trim())
+    .filter((value) => value?.trim())
     .join('\n\n');
   const applicantTokens = estimateTokens(applicantText);
-  
+
   // Count system prompt tokens (template + criteria + instructions)
   const systemPrompt = promptTemplate
     .replace('{criteriaString}', criteria)
     .replace('{additionalInstructions}', additionalInstructions || '');
   const promptTokens = estimateTokens(systemPrompt);
-  
+
   // Total input tokens
   const inputTokens = applicantTokens + promptTokens;
-  
+
   // Estimate output tokens (AI response)
   // Make output estimate more realistic based on criteria complexity
   const criteriaTokens = estimateTokens(criteria);
-  
+
   // Base output: 150-300 tokens for simple evaluations
   // Add tokens based on criteria complexity
   // More complex criteria = longer explanations
   let outputTokens = 200; // Base response
-  
+
   if (criteriaTokens > 100) {
     outputTokens += Math.min(300, criteriaTokens * 2); // Complex criteria = longer response
   } else if (criteriaTokens > 50) {
@@ -67,14 +67,14 @@ export const estimateEvaluationTokens = (
   } else {
     outputTokens += 50; // Simple criteria = short response
   }
-  
+
   // Conservative upper bound
   outputTokens = Math.min(outputTokens, 600);
-  
+
   return {
     inputTokens,
     outputTokens,
-    totalTokens: inputTokens + outputTokens
+    totalTokens: inputTokens + outputTokens,
   };
 };
 
@@ -89,7 +89,7 @@ export const estimateBatchTokens = (
 ): TokenCount => {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
-  
+
   // Calculate for each applicant × evaluation field combination
   for (const applicant of applicants) {
     for (const field of evaluationFields) {
@@ -99,15 +99,15 @@ export const estimateBatchTokens = (
         field.criteria,
         additionalInstructions
       );
-      
+
       totalInputTokens += tokens.inputTokens;
       totalOutputTokens += tokens.outputTokens;
     }
   }
-  
+
   return {
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
-    totalTokens: totalInputTokens + totalOutputTokens
+    totalTokens: totalInputTokens + totalOutputTokens,
   };
-}; 
+};

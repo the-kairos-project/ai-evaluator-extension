@@ -8,33 +8,38 @@ import {
   Select,
   TablePickerSynced,
   Text,
-  useBase,
   ViewPickerSynced,
+  useBase,
 } from '@airtable/blocks/ui';
 import React from 'react';
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
-import { type Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
 import { globalConfig } from '@airtable/blocks';
 import {
+  type Record as AirtableRecord,
   type Field,
   FieldType,
-  type Record as AirtableRecord,
   type Table,
 } from '@airtable/blocks/models';
-import { evaluateApplicants, type SetProgress } from '../lib/evaluateApplicants';
 import pRetry from 'p-retry';
-import { formatModelName, PROVIDER_ICONS } from '../lib/models/config';
-import { FormFieldWithTooltip, useGuidedMode } from './components/helpSystem';
 import { estimateBatchCost, formatCostEstimate } from '../lib/estimation';
-import { addFailedApplicants, getFailedApplicantsCount, clearFailedApplicants, getFailedApplicants } from '../lib/failedApplicants';
+import { type SetProgress, evaluateApplicants } from '../lib/evaluateApplicants';
+import {
+  addFailedApplicants,
+  clearFailedApplicants,
+  getFailedApplicants,
+  getFailedApplicantsCount,
+} from '../lib/failedApplicants';
+import { PROVIDER_ICONS, formatModelName } from '../lib/models/config';
+import { type Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
 import { retryFailedApplicants } from '../lib/retryFailedApplicants';
 import { FailedApplicantsModal } from './components/FailedApplicantsModal';
+import { FormFieldWithTooltip, useGuidedMode } from './components/helpSystem';
 
 // Helper function to build dependency map
 const buildDependencyMap = (preset: Preset): Map<string, string[]> => {
   const dependencyMap = new Map<string, string[]>();
-  
+
   for (const { fieldId, dependsOnInputField } of preset.evaluationFields) {
     if (dependsOnInputField) {
       if (!dependencyMap.has(dependsOnInputField)) {
@@ -43,12 +48,15 @@ const buildDependencyMap = (preset: Preset): Map<string, string[]> => {
       dependencyMap.get(dependsOnInputField).push(fieldId);
     }
   }
-  
+
   return dependencyMap;
 };
 
 // Helper function to check if an applicant should be processed
-const shouldProcessApplicant = (applicant: AirtableRecord, dependencyFields: string[]): boolean => {
+const shouldProcessApplicant = (
+  applicant: AirtableRecord,
+  dependencyFields: string[]
+): boolean => {
   for (const inputFieldId of dependencyFields) {
     const value = applicant.getCellValueAsString(inputFieldId);
     if (value && value.trim() !== '') {
@@ -105,17 +113,16 @@ const quickPrecheck = async (
 
 // Helper function to get current model from settings
 const getCurrentModel = (): string => {
-  const selectedProvider = globalConfig.get('selectedModel') as string || 'openai';
+  const selectedProvider = (globalConfig.get('selectedModel') as string) || 'openai';
   if (selectedProvider === 'openai') {
-    return globalConfig.get('openAiModel') as string || 'gpt-4o';
-  } else {
-    return globalConfig.get('anthropicModel') as string || 'claude-3-5-sonnet-20241022';
+    return (globalConfig.get('openAiModel') as string) || 'gpt-4o';
   }
+  return (globalConfig.get('anthropicModel') as string) || 'claude-3-5-sonnet-20241022';
 };
 
 // Helper function to get preferred currency from settings
 const getPreferredCurrency = (): string => {
-  return globalConfig.get('preferredCurrency') as string || 'USD';
+  return (globalConfig.get('preferredCurrency') as string) || 'USD';
 };
 
 const renderPreviewText = (
@@ -125,21 +132,26 @@ const renderPreviewText = (
   evaluationFields?: Array<{ criteria: string }>
 ) => {
   const numberOfItems = numberOfApplicants * numberOfEvaluationCriteria;
-  
+
   // Try to provide realistic cost estimate if we have the data
   if (applicantsData && evaluationFields && applicantsData.length > 0) {
     try {
       const currentModel = getCurrentModel();
       const preferredCurrency = getPreferredCurrency();
-      const estimate = estimateBatchCost(applicantsData, evaluationFields, currentModel, preferredCurrency);
+      const estimate = estimateBatchCost(
+        applicantsData,
+        evaluationFields,
+        currentModel,
+        preferredCurrency
+      );
       const costText = formatCostEstimate(estimate);
-      
+
       return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria. ${costText}. To cancel, please close the entire browser tab.`;
     } catch (error) {
       console.warn('Cost estimation failed, using fallback:', error);
     }
   }
-  
+
   // Fallback to old estimation if new system fails
   const costEstimateGbp = (numberOfItems * 0.011).toFixed(2);
   return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated cost: £${costEstimateGbp} (rough estimate). To cancel, please close the entire browser tab.`;
@@ -172,7 +184,9 @@ export const MainPage = () => {
   ): Promise<{ successes: number; failures: number }> {
     // Dynamic batch sizing based on field count to optimize concurrency
     const fieldCount = preset.evaluationFields.length;
-    const currentConcurrency = (await import('../lib/concurrency/config')).getCurrentConcurrency();
+    const currentConcurrency = (
+      await import('../lib/concurrency/config')
+    ).getCurrentConcurrency();
     const BATCH_SIZE = Math.max(1, Math.floor(currentConcurrency / fieldCount));
 
     console.log(
@@ -185,15 +199,19 @@ export const MainPage = () => {
     let processedCount = 0;
 
     // Process in batches to manage memory
-    console.log(`🔄 Starting batch processing loop. Total applicants: ${applicantsToProcess.length}, Batch size: ${BATCH_SIZE}`);
-    
+    console.log(
+      `🔄 Starting batch processing loop. Total applicants: ${applicantsToProcess.length}, Batch size: ${BATCH_SIZE}`
+    );
+
     for (
       let batchStart = 0;
       batchStart < applicantsToProcess.length;
       batchStart += BATCH_SIZE
     ) {
-      console.log(`🔄 === STARTING BATCH ITERATION: batchStart=${batchStart}, BATCH_SIZE=${BATCH_SIZE} ===`);
-      
+      console.log(
+        `🔄 === STARTING BATCH ITERATION: batchStart=${batchStart}, BATCH_SIZE=${BATCH_SIZE} ===`
+      );
+
       // Extract the current batch
       const currentBatch = applicantsToProcess.slice(
         batchStart,
@@ -202,8 +220,10 @@ export const MainPage = () => {
 
       const batchNumber = Math.floor(batchStart / BATCH_SIZE) + 1;
       const totalBatches = Math.ceil(applicantsToProcess.length / BATCH_SIZE);
-      
-      console.log(`📦 Batch ${batchNumber}/${totalBatches}: Processing ${currentBatch.length} applicants (${batchStart + 1}-${Math.min(batchStart + BATCH_SIZE, applicantsToProcess.length)})`);
+
+      console.log(
+        `📦 Batch ${batchNumber}/${totalBatches}: Processing ${currentBatch.length} applicants (${batchStart + 1}-${Math.min(batchStart + BATCH_SIZE, applicantsToProcess.length)})`
+      );
 
       setResult(
         `Processing batch ${batchNumber} of ${totalBatches} ` +
@@ -215,7 +235,9 @@ export const MainPage = () => {
       );
 
       // Get evaluation promises for this batch only
-      console.log(`🔨 Generating evaluation promises for batch ${batchNumber} with ${currentBatch.length} applicants...`);
+      console.log(
+        `🔨 Generating evaluation promises for batch ${batchNumber} with ${currentBatch.length} applicants...`
+      );
       const batchEvaluationPromises = evaluateApplicants(
         currentBatch,
         preset,
@@ -229,52 +251,66 @@ export const MainPage = () => {
           setProgress(() => 0.1 + 0.9 * (overallProgressOffset + batchContribution));
         }
       );
-      console.log(`✅ Generated ${batchEvaluationPromises.length} evaluation promises for batch ${batchNumber}`);
-      
+      console.log(
+        `✅ Generated ${batchEvaluationPromises.length} evaluation promises for batch ${batchNumber}`
+      );
+
       if (batchEvaluationPromises.length === 0) {
-        console.log(`⚠️ WARNING: No evaluation promises generated for batch ${batchNumber}. Skipping batch.`);
+        console.log(
+          `⚠️ WARNING: No evaluation promises generated for batch ${batchNumber}. Skipping batch.`
+        );
         continue;
       }
 
       // Process each evaluation and write to Airtable
-      console.log(`🔄 Starting Promise.allSettled for batch ${batchNumber} with ${batchEvaluationPromises.length} promises`);
+      console.log(
+        `🔄 Starting Promise.allSettled for batch ${batchNumber} with ${batchEvaluationPromises.length} promises`
+      );
       console.log(`📋 Expected applicants in this batch: ${currentBatch.length}`);
       console.log(`🎯 Expected promises: ${batchEvaluationPromises.length}`);
-      
+
       if (batchEvaluationPromises.length !== currentBatch.length) {
-        console.warn(`⚠️ MISMATCH: Expected ${currentBatch.length} promises but got ${batchEvaluationPromises.length}`);
+        console.warn(
+          `⚠️ MISMATCH: Expected ${currentBatch.length} promises but got ${batchEvaluationPromises.length}`
+        );
       }
-      
+
       // Track promise completion in real-time
       let completedPromises = 0;
       const startAllSettled = Date.now();
-      
+
       // Add batch-level timeout (5 minutes per batch)
       const BATCH_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-      
+
       const batchPromise = Promise.allSettled(
         batchEvaluationPromises.map(async (evaluationPromise, index) => {
           const applicantNumber = batchStart + index + 1;
           const startTime = Date.now();
-          
-          console.log(`🚀 Starting processing of applicant ${applicantNumber} (index ${index} in batch ${batchNumber})`);
-          
+
+          console.log(
+            `🚀 Starting processing of applicant ${applicantNumber} (index ${index} in batch ${batchNumber})`
+          );
+
           try {
             setResult(
               `Processing batch ${batchNumber} of ${totalBatches} - ` +
-              `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...`
+                `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...`
             );
 
-            console.log(`⏳ Awaiting evaluation promise for applicant ${applicantNumber}...`);
-            
+            console.log(
+              `⏳ Awaiting evaluation promise for applicant ${applicantNumber}...`
+            );
+
             const evaluation = await evaluationPromise;
-            
-            console.log(`✅ Evaluation promise resolved for applicant ${applicantNumber}`);
+
+            console.log(
+              `✅ Evaluation promise resolved for applicant ${applicantNumber}`
+            );
 
             // Check if evaluation contains applicant ID before logging
             const applicantId = evaluation[preset.evaluationApplicantField]?.[0]?.id;
             const evaluationTime = Date.now() - startTime;
-            
+
             console.log(
               `✅ Evaluated applicant ${applicantNumber} (ID: ${
                 applicantId || 'unknown'
@@ -283,109 +319,158 @@ export const MainPage = () => {
 
             setResult(
               `Processing batch ${batchNumber} of ${totalBatches} - ` +
-              `Saving applicant ${applicantNumber} to Airtable...`
+                `Saving applicant ${applicantNumber} to Airtable...`
             );
 
             // Write to Airtable with retry
-            console.log(`💾 Starting Airtable save for applicant ${applicantNumber}...`);
+            console.log(
+              `💾 Starting Airtable save for applicant ${applicantNumber}...`
+            );
             const airtableStartTime = Date.now();
-            
+
             try {
-              await pRetry(() => {
-                console.log(`🔄 Attempting Airtable createRecord for applicant ${applicantNumber}...`);
-                return evaluationTable.createRecordAsync(evaluation);
-              }, {
-                retries: 3,
-                factor: 2,
-                minTimeout: 1000,
-                onFailedAttempt: (error) => {
-                  console.warn(`⚠️ Airtable save retry ${error.attemptNumber} for applicant ${applicantNumber}: ${error.message}`);
+              await pRetry(
+                () => {
+                  console.log(
+                    `🔄 Attempting Airtable createRecord for applicant ${applicantNumber}...`
+                  );
+                  return evaluationTable.createRecordAsync(evaluation);
+                },
+                {
+                  retries: 3,
+                  factor: 2,
+                  minTimeout: 1000,
+                  onFailedAttempt: (error) => {
+                    console.warn(
+                      `⚠️ Airtable save retry ${error.attemptNumber} for applicant ${applicantNumber}: ${error.message}`
+                    );
+                  },
                 }
-              });
-              
+              );
+
               const airtableTime = Date.now() - airtableStartTime;
-              console.log(`✅ Airtable save successful for applicant ${applicantNumber} in ${airtableTime}ms`);
+              console.log(
+                `✅ Airtable save successful for applicant ${applicantNumber} in ${airtableTime}ms`
+              );
             } catch (airtableError) {
               const airtableTime = Date.now() - airtableStartTime;
-              console.error(`❌ Airtable save failed for applicant ${applicantNumber} after ${airtableTime}ms:`, airtableError);
+              console.error(
+                `❌ Airtable save failed for applicant ${applicantNumber} after ${airtableTime}ms:`,
+                airtableError
+              );
               throw airtableError;
             }
-            
+
             const airtableTime = Date.now() - airtableStartTime;
-            
+
             const totalTime = Date.now() - startTime;
             console.log(
               `✅ Saved applicant ${applicantNumber} to Airtable in ${airtableTime}ms ` +
-              `(total: ${totalTime}ms)`
+                `(total: ${totalTime}ms)`
             );
-            
+
             console.log(`🎯 Returning success result for applicant ${applicantNumber}`);
             completedPromises++;
-            console.log(`📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed`);
-            return { success: true, applicantNumber, evaluationTime, airtableTime, totalTime };
+            console.log(
+              `📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed`
+            );
+            return {
+              success: true,
+              applicantNumber,
+              evaluationTime,
+              airtableTime,
+              totalTime,
+            };
           } catch (error) {
             const totalTime = Date.now() - startTime;
-            console.error(`❌ Failed to process applicant ${applicantNumber} after ${totalTime}ms:`, error);
+            console.error(
+              `❌ Failed to process applicant ${applicantNumber} after ${totalTime}ms:`,
+              error
+            );
             console.log(`🎯 Returning error result for applicant ${applicantNumber}`);
             completedPromises++;
-            console.log(`📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed (with error)`);
+            console.log(
+              `📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed (with error)`
+            );
             return { success: false, error, applicantNumber, totalTime };
           }
         })
       );
 
       // Race the batch promise against the batch timeout
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Batch ${batchNumber} timeout after ${BATCH_TIMEOUT/1000}s`)), BATCH_TIMEOUT)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(`Batch ${batchNumber} timeout after ${BATCH_TIMEOUT / 1000}s`)
+            ),
+          BATCH_TIMEOUT
+        )
       );
 
-      let batchResults;
+      let batchResults: any;
       let timedOut = false;
-      
+
       try {
-        console.log(`⏰ Starting batch ${batchNumber} with ${BATCH_TIMEOUT/1000}s timeout...`);
+        console.log(
+          `⏰ Starting batch ${batchNumber} with ${BATCH_TIMEOUT / 1000}s timeout...`
+        );
         batchResults = await Promise.race([batchPromise, timeoutPromise]);
         console.log(`✅ Batch ${batchNumber} completed successfully within timeout`);
       } catch (error) {
         if (error.message.includes('timeout')) {
-          console.error(`⏰ Batch ${batchNumber} timed out! Handling partial results...`);
+          console.error(
+            `⏰ Batch ${batchNumber} timed out! Handling partial results...`
+          );
           timedOut = true;
-          
+
           // Get whatever results we have so far (some promises may have completed)
-          const partialResults = await Promise.allSettled(batchEvaluationPromises.map(() => 
-            Promise.resolve({ success: false, error: 'Batch timeout', applicantNumber: -1, totalTime: BATCH_TIMEOUT })
-          ));
+          const partialResults = await Promise.allSettled(
+            batchEvaluationPromises.map(() =>
+              Promise.resolve({
+                success: false,
+                error: 'Batch timeout',
+                applicantNumber: -1,
+                totalTime: BATCH_TIMEOUT,
+              })
+            )
+          );
           batchResults = partialResults;
-          
+
           // Track the hanging applicants for retry
           const hangingApplicants = currentBatch.filter((_, index) => {
             // If we have fewer results than expected, these applicants are hanging
             return index >= completedPromises;
           });
-          
-                     if (hangingApplicants.length > 0) {
-             await addFailedApplicants(
-               hangingApplicants, 
-               `Batch timeout - ${hangingApplicants.length} applicants didn't complete in ${BATCH_TIMEOUT/1000}s`,
-               batchNumber,
-               preset.name,
-               preset.applicantFields
-             );
-             // Update failed count for UI
-             setFailedCount(getFailedApplicantsCount());
-           }
+
+          if (hangingApplicants.length > 0) {
+            await addFailedApplicants(
+              hangingApplicants,
+              `Batch timeout - ${hangingApplicants.length} applicants didn't complete in ${BATCH_TIMEOUT / 1000}s`,
+              batchNumber,
+              preset.name,
+              preset.applicantFields
+            );
+            // Update failed count for UI
+            setFailedCount(getFailedApplicantsCount());
+          }
         } else {
           throw error; // Re-throw non-timeout errors
         }
       }
-      
+
       const allSettledTime = Date.now() - startAllSettled;
-      console.log(`✅ Promise.allSettled completed for batch ${batchNumber} in ${allSettledTime}ms. Got ${batchResults.length} results.`);
-      console.log(`📊 Batch ${batchNumber} results breakdown:`, batchResults.map(r => ({
-        status: r.status,
-        success: r.status === 'fulfilled' ? r.value?.success : 'N/A',
-        applicantNumber: r.status === 'fulfilled' ? r.value?.applicantNumber : 'N/A'
-      })));
+      console.log(
+        `✅ Promise.allSettled completed for batch ${batchNumber} in ${allSettledTime}ms. Got ${batchResults.length} results.`
+      );
+      console.log(
+        `📊 Batch ${batchNumber} results breakdown:`,
+        batchResults.map((r) => ({
+          status: r.status,
+          success: r.status === 'fulfilled' ? r.value?.success : 'N/A',
+          applicantNumber: r.status === 'fulfilled' ? r.value?.applicantNumber : 'N/A',
+        }))
+      );
 
       // Count results from this batch and calculate timing
       console.log(`🔢 Counting results for batch ${batchNumber}...`);
@@ -393,51 +478,69 @@ export const MainPage = () => {
         (r) => r.status === 'fulfilled' && r.value?.success
       ).length;
       const batchFailures = batchResults.length - batchSuccesses;
-      console.log(`🔢 Batch ${batchNumber} counts: ${batchSuccesses} successes, ${batchFailures} failures out of ${batchResults.length} total`);
+      console.log(
+        `🔢 Batch ${batchNumber} counts: ${batchSuccesses} successes, ${batchFailures} failures out of ${batchResults.length} total`
+      );
 
       // Calculate timing statistics for successful operations
       const successfulResults = batchResults
-        .filter(r => r.status === 'fulfilled' && r.value?.success)
-        .map(r => (r as any).value);
-      
-      const timingStats = successfulResults.length > 0 ? {
-        avgEvaluationTime: Math.round(successfulResults.reduce((sum, r) => sum + r.evaluationTime, 0) / successfulResults.length),
-        avgAirtableTime: Math.round(successfulResults.reduce((sum, r) => sum + r.airtableTime, 0) / successfulResults.length),
-        avgTotalTime: Math.round(successfulResults.reduce((sum, r) => sum + r.totalTime, 0) / successfulResults.length)
-      } : null;
+        .filter((r) => r.status === 'fulfilled' && r.value?.success)
+        .map((r) => (r as any).value);
+
+      const timingStats =
+        successfulResults.length > 0
+          ? {
+              avgEvaluationTime: Math.round(
+                successfulResults.reduce((sum, r) => sum + r.evaluationTime, 0) /
+                  successfulResults.length
+              ),
+              avgAirtableTime: Math.round(
+                successfulResults.reduce((sum, r) => sum + r.airtableTime, 0) /
+                  successfulResults.length
+              ),
+              avgTotalTime: Math.round(
+                successfulResults.reduce((sum, r) => sum + r.totalTime, 0) /
+                  successfulResults.length
+              ),
+            }
+          : null;
 
       totalSuccesses += batchSuccesses;
       totalFailures += batchFailures;
       processedCount += currentBatch.length;
-      
-      console.log(`📈 Updated totals: ${totalSuccesses} total successes, ${totalFailures} total failures, ${processedCount} processed`);
+
+      console.log(
+        `📈 Updated totals: ${totalSuccesses} total successes, ${totalFailures} total failures, ${processedCount} processed`
+      );
 
       // Enhanced batch completion message with timing
       let batchMessage = `Batch ${batchNumber}/${totalBatches} complete: ${batchSuccesses} successes, ${batchFailures} failures.`;
       if (timedOut) {
-        batchMessage += ` (TIMED OUT - some applicants saved for retry)`;
+        batchMessage += ' (TIMED OUT - some applicants saved for retry)';
       } else if (timingStats) {
         batchMessage += ` Avg times - Evaluation: ${timingStats.avgEvaluationTime}ms, Airtable: ${timingStats.avgAirtableTime}ms, Total: ${timingStats.avgTotalTime}ms`;
       }
-      
+
       console.log(`📊 ${batchMessage}`);
-      
+
       // Update the user with progress after each batch
-      console.log(`🖥️ Updating UI with batch completion message...`);
+      console.log('🖥️ Updating UI with batch completion message...');
       setResult(
-        `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ` +
-          `${totalSuccesses} successes, ${totalFailures} failures so far. ` +
-          batchMessage
+        `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ${totalSuccesses} successes, ${totalFailures} failures so far. ${batchMessage}`
       );
-      console.log(`🖥️ UI updated. About to continue to next batch or finish.`);
-      
+      console.log('🖥️ UI updated. About to continue to next batch or finish.');
+
       // Check if we're at the end
       const nextBatchStart = batchStart + BATCH_SIZE;
       const hasMoreBatches = nextBatchStart < applicantsToProcess.length;
-      console.log(`🔄 Batch ${batchNumber} complete. Next start: ${nextBatchStart}, Has more batches: ${hasMoreBatches}`);
-      
+      console.log(
+        `🔄 Batch ${batchNumber} complete. Next start: ${nextBatchStart}, Has more batches: ${hasMoreBatches}`
+      );
+
       if (!hasMoreBatches) {
-        console.log(`🏁 All batches completed! Final totals: ${totalSuccesses} successes, ${totalFailures} failures`);
+        console.log(
+          `🏁 All batches completed! Final totals: ${totalSuccesses} successes, ${totalFailures} failures`
+        );
       }
     }
 
@@ -458,11 +561,11 @@ export const MainPage = () => {
     setResult('Getting applicant records...');
     const applicantView = applicantTable.getViewById(preset.applicantViewId);
     const applicantRecords = await applicantView.selectRecordsAsync();
-    
+
     const previewText = renderPreviewText(
       applicantRecords.records.length,
       preset.evaluationFields.length,
-      applicantRecords.records.map(record => {
+      applicantRecords.records.map((record) => {
         const applicantData: Record<string, string> = {};
         // Convert applicant fields to string format for cost estimation
         for (const field of preset.applicantFields) {
@@ -476,24 +579,37 @@ export const MainPage = () => {
         }
         return applicantData;
       }),
-      preset.evaluationFields.map(field => ({ criteria: field.criteria }))
+      preset.evaluationFields.map((field) => ({ criteria: field.criteria }))
     );
     setResult(previewText);
-    
+
     // Log detailed processing plan
-    const planningConcurrency = (await import('../lib/concurrency/config')).getCurrentConcurrency();
-    const estimatedBatchSize = Math.max(1, Math.floor(planningConcurrency / preset.evaluationFields.length));
-    console.log(`📋 Processing Plan:`);
+    const planningConcurrency = (
+      await import('../lib/concurrency/config')
+    ).getCurrentConcurrency();
+    const estimatedBatchSize = Math.max(
+      1,
+      Math.floor(planningConcurrency / preset.evaluationFields.length)
+    );
+    console.log('📋 Processing Plan:');
     console.log(`• Applicants to evaluate: ${applicantRecords.records.length}`);
     console.log(`• Evaluation fields: ${preset.evaluationFields.length}`);
-    console.log(`• Total API calls needed: ${applicantRecords.records.length * preset.evaluationFields.length}`);
-    console.log(`• Configured concurrency: ${planningConcurrency} simultaneous API calls`);
+    console.log(
+      `• Total API calls needed: ${applicantRecords.records.length * preset.evaluationFields.length}`
+    );
+    console.log(
+      `• Configured concurrency: ${planningConcurrency} simultaneous API calls`
+    );
     console.log(`• Estimated batch size: ${estimatedBatchSize}`);
-    console.log(`• Expected batches: ${Math.ceil(applicantRecords.records.length / estimatedBatchSize)}`);
+    console.log(
+      `• Expected batches: ${Math.ceil(applicantRecords.records.length / estimatedBatchSize)}`
+    );
     console.log(previewText);
 
     // Fast precheck to eliminate applicants that don't need processing
-    setResult(`Starting pre-check for ${applicantRecords.records.length} applicants...`);
+    setResult(
+      `Starting pre-check for ${applicantRecords.records.length} applicants...`
+    );
     const { applicantsToProcess, skippedApplicants } = await quickPrecheck(
       applicantRecords.records,
       preset,
@@ -509,7 +625,7 @@ export const MainPage = () => {
         message: `No applicants require processing. All ${skippedApplicants.length} applicants had empty dependency fields.`,
         skippedCount: skippedApplicants.length,
         successCount: 0,
-        failureCount: 0
+        failureCount: 0,
       };
     }
 
@@ -532,23 +648,23 @@ export const MainPage = () => {
       }`,
       skippedCount: skippedApplicants.length,
       successCount: successes,
-      failureCount: failures
+      failureCount: failures,
     };
   };
 
   const estimateCost = async () => {
     try {
       validatePrerequisites();
-      
+
       // Get applicant records for cost estimation
       setResult('Calculating cost estimate...');
       const applicantView = applicantTable.getViewById(preset.applicantViewId);
       const applicantRecords = await applicantView.selectRecordsAsync();
-      
+
       const previewText = renderPreviewText(
         applicantRecords.records.length,
         preset.evaluationFields.length,
-        applicantRecords.records.map(record => {
+        applicantRecords.records.map((record) => {
           const applicantData: Record<string, string> = {};
           // Convert applicant fields to string format for cost estimation
           for (const field of preset.applicantFields) {
@@ -562,9 +678,9 @@ export const MainPage = () => {
           }
           return applicantData;
         }),
-        preset.evaluationFields.map(field => ({ criteria: field.criteria }))
+        preset.evaluationFields.map((field) => ({ criteria: field.criteria }))
       );
-      
+
       setResult(previewText);
     } catch (error) {
       const errorMessage = `Cost estimation error: ${error instanceof Error ? error.message : String(error)}`;
@@ -577,12 +693,12 @@ export const MainPage = () => {
     setProgress(0);
     setResult(null);
     console.log('Running preset', preset);
-    
+
     try {
       validatePrerequisites();
       const result = await processEvaluation();
       setResult(result.message);
-      
+
       // Show failed applicants modal if there are any failures after processing
       const currentFailedCount = getFailedApplicantsCount();
       if (currentFailedCount > 0) {
@@ -590,8 +706,7 @@ export const MainPage = () => {
         setShowFailedModal(true);
       }
     } catch (error) {
-      const errorMessage =
-        `Error: ${error instanceof Error ? error.message : String(error)}`;
+      const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`;
       setResult(errorMessage);
     } finally {
       setRunning(false);
@@ -600,11 +715,11 @@ export const MainPage = () => {
 
   const handleRetryFailed = async () => {
     if (!applicantTable || !evaluationTable) return;
-    
+
     setIsRetrying(true);
     setProgress(0);
     setResult(null);
-    
+
     try {
       const failedApplicants = getFailedApplicants();
       const retryResult = await retryFailedApplicants(
@@ -615,15 +730,15 @@ export const MainPage = () => {
         setProgress,
         setResult
       );
-      
+
       setResult(
         `Retry complete: ${retryResult.successes} successes, ${retryResult.failures} failures`
       );
-      
+
       // Update failed count
       const newFailedCount = getFailedApplicantsCount();
       setFailedCount(newFailedCount);
-      
+
       // Close modal if no failures remain
       if (newFailedCount === 0) {
         setShowFailedModal(false);
@@ -646,21 +761,26 @@ export const MainPage = () => {
     <div className="space-y-4">
       {/* API Keys Debug block */}
       <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
-        <p>API Key config: <button onClick={() => {
-          import('../lib/getChatCompletion/apiKeyManager').then(module => {
-            const openAiKey = module.getOpenAiApiKey();
-            const anthropicKey = module.getAnthropicApiKey();
-            
-            const selectedProvider = module.getSelectedModelProvider();
-            const openAiModel = module.getOpenAiModelName();
-            const anthropicModel = module.getAnthropicModelName();
-            
-            const activeModelName = selectedProvider === 'openai' ? openAiModel : anthropicModel;
-            
-            // UI feedback
-            const debugInfo = document.createElement('div');
-            debugInfo.className = 'mt-2 p-1 bg-blue-100 rounded';
-            debugInfo.innerHTML = `
+        <p>
+          API Key config:{' '}
+          <button
+            type="button"
+            onClick={() => {
+              import('../lib/getChatCompletion/apiKeyManager').then((module) => {
+                const openAiKey = module.getOpenAiApiKey();
+                const anthropicKey = module.getAnthropicApiKey();
+
+                const selectedProvider = module.getSelectedModelProvider();
+                const openAiModel = module.getOpenAiModelName();
+                const anthropicModel = module.getAnthropicModelName();
+
+                const activeModelName =
+                  selectedProvider === 'openai' ? openAiModel : anthropicModel;
+
+                // UI feedback
+                const debugInfo = document.createElement('div');
+                debugInfo.className = 'mt-2 p-1 bg-blue-100 rounded';
+                debugInfo.innerHTML = `
               <p>${PROVIDER_ICONS[selectedProvider] || '🔧'} <strong>Provider:</strong> ${selectedProvider === 'openai' ? 'OpenAI' : 'Anthropic Claude'}</p>
               <p>📋 <strong>Model:</strong> ${formatModelName(activeModelName)}</p>
               <p>🔑 <strong>API Keys:</strong> 
@@ -668,22 +788,31 @@ export const MainPage = () => {
                 Anthropic: ${anthropicKey ? '✅' : '❌'}
               </p>
             `;
-            
-            const debugDiv = document.querySelector('.mb-4.p-2.bg-gray-100.rounded.text-xs');
-            if (debugDiv) {
-              const existingInfo = debugDiv.querySelector('.mt-2.p-1.bg-blue-100.rounded');
-              if (existingInfo) {
-                existingInfo.remove();
-              }
-              debugDiv.appendChild(debugInfo);
-            }
-          });
-        }} className="underline text-blue-500">Check API Keys and Model</button></p>
+
+                const debugDiv = document.querySelector(
+                  '.mb-4.p-2.bg-gray-100.rounded.text-xs'
+                );
+                if (debugDiv) {
+                  const existingInfo = debugDiv.querySelector(
+                    '.mt-2.p-1.bg-blue-100.rounded'
+                  );
+                  if (existingInfo) {
+                    existingInfo.remove();
+                  }
+                  debugDiv.appendChild(debugInfo);
+                }
+              });
+            }}
+            className="underline text-blue-500"
+          >
+            Check API Keys and Model
+          </button>
+        </p>
       </div>
       {/* End API Keys Debug Block */}
 
-      <FormFieldWithTooltip 
-        label="Applicant table" 
+      <FormFieldWithTooltip
+        label="Applicant table"
         helpKey="applicantTable"
         showGuidedHelp={showGuidedHelp}
       >
@@ -697,8 +826,8 @@ export const MainPage = () => {
       </FormFieldWithTooltip>
       {applicantTable && (
         <>
-          <FormFieldWithTooltip 
-            label="Applicant view" 
+          <FormFieldWithTooltip
+            label="Applicant view"
             helpKey="applicantView"
             showGuidedHelp={showGuidedHelp}
           >
@@ -710,10 +839,10 @@ export const MainPage = () => {
           <FormField label="Answer (input) fields">
             <div className="flex flex-col gap-3">
               {preset.applicantFields.map((field, index) => (
-                <ApplicantFieldEditor 
-                  key={`applicant-field-${field.fieldId || ''}-${index}`} 
-                  preset={preset} 
-                  index={index} 
+                <ApplicantFieldEditor
+                  key={`applicant-field-${field.fieldId || ''}-${index}`}
+                  preset={preset}
+                  index={index}
                 />
               ))}
               <ApplicantFieldEditor
@@ -726,8 +855,8 @@ export const MainPage = () => {
         </>
       )}
 
-      <FormFieldWithTooltip 
-        label="Evaluation table" 
+      <FormFieldWithTooltip
+        label="Evaluation table"
         helpKey="evaluationTable"
         showGuidedHelp={showGuidedHelp}
       >
@@ -747,10 +876,10 @@ export const MainPage = () => {
           <FormField label="Score (output) fields">
             <div className="flex flex-col gap-3">
               {preset.evaluationFields.map((field, index) => (
-                <EvaluationFieldEditor 
-                  key={`eval-field-${field.fieldId || ''}-${index}`} 
-                  preset={preset} 
-                  index={index} 
+                <EvaluationFieldEditor
+                  key={`eval-field-${field.fieldId || ''}-${index}`}
+                  preset={preset}
+                  index={index}
                 />
               ))}
               <EvaluationFieldEditor
@@ -760,8 +889,8 @@ export const MainPage = () => {
               />
             </div>
           </FormField>
-          <FormFieldWithTooltip 
-            label="Applicant field" 
+          <FormFieldWithTooltip
+            label="Applicant field"
             helpKey="applicantField"
             showGuidedHelp={showGuidedHelp}
           >
@@ -771,8 +900,8 @@ export const MainPage = () => {
               table={evaluationTable}
             />
           </FormFieldWithTooltip>
-          <FormFieldWithTooltip 
-            label="(optional) Logs field" 
+          <FormFieldWithTooltip
+            label="(optional) Logs field"
             helpKey="logsField"
             showGuidedHelp={showGuidedHelp}
           >
@@ -827,7 +956,7 @@ export const MainPage = () => {
       </div>
       {running && <ProgressBar className="my-2" progress={progress} />}
       {result && <Text className="my-2">{result}</Text>}
-      
+
       <FailedApplicantsModal
         failedApplicants={getFailedApplicants()}
         isOpen={showFailedModal}
@@ -893,8 +1022,8 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
   return (
     <div className="p-3 border bg-white rounded shadow">
       <div className="grid grid-cols-2 gap-3">
-        <FormFieldWithTooltip 
-          label="Source field" 
+        <FormFieldWithTooltip
+          label="Source field"
           helpKey="sourceField"
           showGuidedHelp={showGuidedHelp}
           className="mb-0"
@@ -909,8 +1038,8 @@ const ApplicantFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) => 
             field={field}
           />
         </FormFieldWithTooltip>
-        <FormFieldWithTooltip 
-          label="(optional) Question name" 
+        <FormFieldWithTooltip
+          label="(optional) Question name"
           helpKey="questionName"
           showGuidedHelp={showGuidedHelp}
           className="mb-0"
@@ -1020,8 +1149,8 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
   return (
     <div className="p-3 border bg-white rounded shadow">
       <div className="grid grid-cols-2 gap-3">
-        <FormFieldWithTooltip 
-          label="Output field" 
+        <FormFieldWithTooltip
+          label="Output field"
           helpKey="outputField"
           showGuidedHelp={showGuidedHelp}
           className="mb-0"
@@ -1037,8 +1166,8 @@ const EvaluationFieldEditor: React.FC<FieldEditorProps> = ({ preset, index }) =>
             field={field}
           />
         </FormFieldWithTooltip>
-        <FormFieldWithTooltip 
-          label="Evaluation criteria" 
+        <FormFieldWithTooltip
+          label="Evaluation criteria"
           helpKey="evaluationCriteria"
           showGuidedHelp={showGuidedHelp}
           className="mb-0"

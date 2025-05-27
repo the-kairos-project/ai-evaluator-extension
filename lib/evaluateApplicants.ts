@@ -1,8 +1,13 @@
 import type { Record as AirtableRecord } from '@airtable/blocks/models';
-import type { Preset } from './preset';
-import { getChatCompletion } from './getChatCompletion';
-import { getActiveTemplate, getPromptSettings, buildPrompt, getRankingKeyword } from './prompts';
 import pRetry from 'p-retry';
+import { getChatCompletion } from './getChatCompletion';
+import type { Preset } from './preset';
+import {
+  buildPrompt,
+  getActiveTemplate,
+  getPromptSettings,
+  getRankingKeyword,
+} from './prompts';
 
 export type SetProgress = (updater: (prev: number) => number) => void;
 
@@ -29,7 +34,7 @@ const getApplicantIdentifier = (applicant: Record<string, string>): string => {
   }
 
   // If no name/id field, use the first non-empty field value as identifier
-  const firstField = Object.entries(applicant).find(([, value]) => value && value.trim());
+  const firstField = Object.entries(applicant).find(([, value]) => value?.trim());
   if (firstField) {
     return `${firstField[0]}: ${firstField[1].substring(0, 20)}...`;
   }
@@ -43,7 +48,7 @@ const getFieldNames = (
   preset: Preset
 ): Map<string, string> => {
   const fieldNameMap = new Map<string, string>();
-  
+
   try {
     // Access parentTable from AirtableRecord
     const table = (applicant as any).parentTable;
@@ -71,7 +76,7 @@ const getFieldNames = (
   } catch (e) {
     // Silent fail - will fall back to using IDs
   }
-  
+
   return fieldNameMap;
 };
 
@@ -91,12 +96,12 @@ const buildDependencyMap = (
       dependencyMap.get(dependsOnInputField).push(fieldId);
     }
   }
-  
+
   // Check if any fields need to be evaluated at all
   const hasStandaloneFields = preset.evaluationFields.some(
     ({ dependsOnInputField }) => !dependsOnInputField
   );
-  
+
   return { dependencyMap, hasStandaloneFields };
 };
 
@@ -107,7 +112,7 @@ const determineSkipFields = (
   preset: Preset
 ): Set<string> => {
   const skipFields = new Set<string>();
-  
+
   dependencyMap.forEach((dependentFields, inputFieldId) => {
     // Get the value from the plain record
     const key =
@@ -122,7 +127,7 @@ const determineSkipFields = (
       }
     }
   });
-  
+
   return skipFields;
 };
 
@@ -137,9 +142,10 @@ export const evaluateApplicants = (
   }
 
   // Get field names for better error messages
-  const fieldNameMap = applicants.length > 0 
-    ? getFieldNames(applicants[0], preset) 
-    : new Map<string, string>();
+  const fieldNameMap =
+    applicants.length > 0
+      ? getFieldNames(applicants[0], preset)
+      : new Map<string, string>();
 
   // Log basic processing info
   console.log(
@@ -297,12 +303,20 @@ const evaluateApplicant = async (
         async () => {
           const apiCallStartTime = Date.now();
           console.log(`🌐 Making API call for ${fieldName} (${applicantId})`);
-          
-          const result = await evaluateItem(applicantString, criteria, fieldId, applicantId, fieldName);
-          
+
+          const result = await evaluateItem(
+            applicantString,
+            criteria,
+            fieldId,
+            applicantId,
+            fieldName
+          );
+
           const apiCallTime = Date.now() - apiCallStartTime;
-          console.log(`✅ API call completed for ${fieldName} (${applicantId}) in ${apiCallTime}ms - Ranking: ${result.ranking}`);
-          
+          console.log(
+            `✅ API call completed for ${fieldName} (${applicantId}) in ${apiCallTime}ms - Ranking: ${result.ranking}`
+          );
+
           return result;
         },
         {
@@ -315,14 +329,16 @@ const evaluateApplicant = async (
             const apiCallTime = Date.now() - fieldStartTime;
             console.error(
               `🔄 Retry ${error.attemptNumber} for ${fieldName} (${applicantId}) ` +
-              `after ${apiCallTime}ms - ${error.message}`
+                `after ${apiCallTime}ms - ${error.message}`
             );
           },
         }
       );
 
       const fieldTotalTime = Date.now() - fieldStartTime;
-      console.log(`✅ Completed evaluation: ${fieldName} for ${applicantId} in ${fieldTotalTime}ms`);
+      console.log(
+        `✅ Completed evaluation: ${fieldName} for ${applicantId} in ${fieldTotalTime}ms`
+      );
 
       // Truncate each individual transcript to avoid exceeding Airtable limits
       logsByField[fieldId] = truncateForAirtable(
@@ -384,14 +400,14 @@ const extractFinalRanking = (
         `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
       );
     }
-    
+
     // Validate rating is within 1-5 range (Airtable rating field constraint)
     if (asInt < 1 || asInt > 5) {
       throw new Error(
         `Rating ${asInt} is out of range (must be 1-5) (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
       );
     }
-    
+
     return asInt;
   }
 
@@ -413,24 +429,24 @@ const evaluateItem = async (
 }> => {
   // Convert explicit line breaks to actual line breaks in the criteria (since they come from an HTML input)
   const processedCriteriaString = criteriaString.replace(/<br>/g, '\n');
-  
+
   // Get current prompt settings and template
   const settings = getPromptSettings();
   const template = getActiveTemplate();
-  
+
   // Build prompt using the template system
   const promptConfig = {
     template,
     variables: {
       criteriaString: processedCriteriaString,
       rankingKeyword: settings.rankingKeyword,
-      additionalInstructions: settings.additionalInstructions
-    }
+      additionalInstructions: settings.additionalInstructions,
+    },
   };
-  
+
   const prompt = buildPrompt(applicantString, promptConfig);
   const rankingKeyword = getRankingKeyword(promptConfig);
-  
+
   // Reduce debug logging to just essentials
   const completion = await getChatCompletion(prompt);
 
