@@ -120,11 +120,6 @@ const getCurrentModel = (): string => {
   return (globalConfig.get('anthropicModel') as string) || 'claude-3-5-sonnet-20241022';
 };
 
-// Helper function to get preferred currency from settings
-const getPreferredCurrency = (): string => {
-  return (globalConfig.get('preferredCurrency') as string) || 'USD';
-};
-
 const renderPreviewText = (
   numberOfApplicants: number,
   numberOfEvaluationCriteria: number,
@@ -137,12 +132,10 @@ const renderPreviewText = (
   if (applicantsData && evaluationFields && applicantsData.length > 0) {
     try {
       const currentModel = getCurrentModel();
-      const preferredCurrency = getPreferredCurrency();
       const estimate = estimateBatchCost(
         applicantsData,
         evaluationFields,
-        currentModel,
-        preferredCurrency
+        currentModel
       );
       const costText = formatCostEstimate(estimate);
 

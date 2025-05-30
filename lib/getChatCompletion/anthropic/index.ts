@@ -25,17 +25,16 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
 
   return updateRateLimit()(async () => {
     try {
-      const proxyUrl = 'http://localhost:8010/proxy/v1/messages';
-      console.log(
-        `🔄 PROXIED Anthropic API call to: ${proxyUrl} (via proxy -> https://api.anthropic.com)`
-      );
+      const apiUrl = 'https://api.anthropic.com/v1/messages';
+      console.log(`🌐 DIRECT Anthropic API call to: ${apiUrl}`);
 
-      const response = await fetch(proxyUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
           'x-api-key': anthropicApiKey,
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
           model: anthropicModel,
@@ -46,6 +45,27 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
           max_tokens: 500,
         }),
       });
+
+      // Read rate limit headers for potential future use
+      const remainingRequests = response.headers.get(
+        'anthropic-ratelimit-requests-remaining'
+      );
+      const remainingTokens = response.headers.get(
+        'anthropic-ratelimit-tokens-remaining'
+      );
+      const resetTime = response.headers.get('anthropic-ratelimit-requests-reset');
+
+      if (remainingRequests && Number.parseInt(remainingRequests) < 10) {
+        console.warn(
+          `🚨 Anthropic API: Only ${remainingRequests} requests remaining until ${resetTime}`
+        );
+      }
+
+      if (remainingTokens && Number.parseInt(remainingTokens) < 1000) {
+        console.warn(
+          `🚨 Anthropic API: Only ${remainingTokens} tokens remaining until ${resetTime}`
+        );
+      }
 
       if (!response.ok || response.status >= 400) {
         const errorText = await response.text();
@@ -59,7 +79,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         throw new Error(
-          'Proxy server not running. Please start it with: bun run proxy.ts'
+          'Failed to connect to Anthropic API. Please check your internet connection and API key.'
         );
       }
       throw error;

@@ -40,6 +40,23 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         }),
       });
 
+      // Read rate limit headers for potential future use
+      const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+      const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
+      const resetTime = response.headers.get('x-ratelimit-reset-requests');
+
+      if (remainingRequests && Number.parseInt(remainingRequests) < 10) {
+        console.warn(
+          `🚨 OpenAI API: Only ${remainingRequests} requests remaining until ${resetTime}`
+        );
+      }
+
+      if (remainingTokens && Number.parseInt(remainingTokens) < 1000) {
+        console.warn(
+          `🚨 OpenAI API: Only ${remainingTokens} tokens remaining until ${resetTime}`
+        );
+      }
+
       if (!response.ok || response.status >= 400) {
         const errorText = await response.text();
         throw new Error(
