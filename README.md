@@ -14,18 +14,20 @@ This repository holds code for an Airtable extension that we can run inside our 
 
 ## Quick Start
 
-**For OpenAI users (simplest setup):**
+**Simple setup for both OpenAI and Anthropic:**
 1. Clone repo, install dependencies: `bun install`
-2. Configure API key in `lib/env.ts`
+2. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
+   ```json
+   {
+     "blockId": "blkYourBlockId",
+     "baseId": "appYourBaseId"
+   }
+   ```
+   - **Base ID**: Found in your Airtable base URL - it's the first part after `airtable.com/` (starts with `app`)
+   - **Block ID**: Generated when you first create the extension in Airtable (starts with `blk`) - only available during initial creation
 3. Run: `bun run start:applications`
-4. ✅ Ready to evaluate! (Uses `gpt-4o-mini` by default)
-
-**For Anthropic users (requires proxy):**
-1. Clone repo, install dependencies: `bun install` 
-2. Configure API key in `lib/env.ts`
-3. Start proxy: `bun run proxy.ts` (keep running)
-4. In new terminal: `bun run start:applications`
-5. ✅ Ready to evaluate! (Uses `claude-3-5-haiku` by default)
+4. Configure API and model via settings on the extension page in Airtable
+5. ✅ Ready to evaluate! (Uses `gpt-4o-mini` or `claude-3-5-haiku` by default)
 
 ## Developer setup
 
@@ -37,30 +39,29 @@ To start developing this extension:
 2. Install [Node.js](https://nodejs.org/)
 3. Install [Bun](https://bun.sh/) with `curl -fsSL https://bun.sh/install | bash`
 4. Run `bun install`
-5. Configure API keys and models:
-   - Edit `lib/env.ts` with your API keys for OpenAI and/or Anthropic
-   - Configure the desired model in `lib/getChatCompletion/openai/config.ts` and/or `lib/getChatCompletion/anthropic/config.ts`
-   - Set your OpenAI organization ID if applicable
-6. **For Anthropic models only:** Start the proxy server in a separate terminal:
-   ```bash
-   bun run proxy.ts
+5. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
+   ```json
+   {
+     "blockId": "blkYourBlockId",
+     "baseId": "appYourBaseId"
+   }
    ```
-   (Keep this running while using Anthropic models - see [API Architecture](#api-architecture) section below)
-7. Run `bun run start` (for the 'Applications' base in the BlueDot Impact AirTable account)
-8. Load the relevant base
+   - **Base ID**: Found in your Airtable base URL - it's the first part after `airtable.com/` (starts with `app`)
+   - **Block ID**: Generated when you first create the extension in Airtable (starts with `blk`) - only available during initial creation
+6. Run `bun run start`
+7. Load the relevant base
+8. Configure API key and model in the extension settings
 9. Make changes to the code and see them reflected in the app!
 
-If the changes don't appear to be updating the app, try clicking the extension name then 'Edit extension', then pasting in the server address printed to the console from step 6 (probably `https://localhost:9000`).
+If the changes don't appear to be updating the app, try clicking the extension name then 'Edit extension', then pasting in the server address printed to the console from step 7 (probably `https://localhost:9000`).
 
 Changes merged into the default branch will automatically be deployed. You can manually deploy new versions using `bun run deploy`. If you get the error `airtableApiBlockNotFound`, set up the block CLI with `npx block set-api-key` with a [personal access token](https://airtable.com/developers/web/guides/personal-access-tokens).
-
-**Note:** The deployed extension only includes OpenAI direct API calls. For Anthropic support in production, you'd need to deploy the proxy server to a cloud service (not covered in this setup).
 
 If you want to install this on a new base see [these instructions](https://www.airtable.com/developers/apps/guides/run-in-multiple-bases).
 
 ## API Architecture
 
-This extension uses different API architectures for different providers due to CORS (Cross-Origin Resource Sharing) restrictions:
+This extension now uses direct API calls for both OpenAI and Anthropic providers:
 
 ### OpenAI: Direct API Calls ✅
 - **No proxy required**
@@ -68,44 +69,36 @@ This extension uses different API architectures for different providers due to C
 - OpenAI allows cross-origin requests from Airtable extensions
 - **Setup**: Just configure your API key - no additional steps needed
 
-### Anthropic: Proxy Server Required 🔄
-- **Proxy server required** due to CORS restrictions
-- Extension calls `http://localhost:8010/proxy/v1/messages`
-- Proxy forwards requests to `https://api.anthropic.com/v1/messages`
-- **Setup**: Must run `bun run proxy.ts` before using Anthropic models
+### Anthropic: Direct API Calls ✅
+- **No proxy required** (updated with direct browser access)
+- Calls directly to `https://api.anthropic.com/v1/messages`
+- Uses `anthropic-dangerous-direct-browser-access: true` header for CORS
+- **Setup**: Just configure your API key - no additional steps needed
 
 ### Development Workflow
 
-**Using OpenAI only:**
+**For both OpenAI and Anthropic:**
 ```bash
 bun run start:applications
-# That's it! OpenAI works directly
-```
-
-**Using Anthropic (or both providers):**
-```bash
-# Terminal 1: Start the proxy server
-bun run proxy.ts
-
-# Terminal 2: Start the extension
-bun run start:applications
+# That's it! Both providers work directly now
 ```
 
 **Available Scripts:**
-- `bun run proxy.ts` - Start proxy server for Anthropic
 - `bun run start:applications` - Start the Airtable extension
-- `bun run dev` - Shows helper message for running both
+- `bun run dev` - Same as start:applications
 
 ### Troubleshooting
 
-**"Failed to fetch" error with Anthropic:**
-- Ensure the proxy server is running (`bun run proxy.ts`)
-- Check that port 8010 is not blocked
-- Verify Anthropic API key is configured
+**"Failed to fetch" error:**
+- Check your internet connection
+- Verify your API keys are configured correctly in `lib/env.ts`
+- Ensure your API keys have sufficient credits/permissions
 
-**OpenAI works but Anthropic doesn't:**
-- This is expected if proxy server isn't running
-- Start proxy server and try again
+**Airtable connection issues:**
+- Verify your `blockId` and `baseId` are correct in `.block/applications.remote.json`
+- Ensure the Block ID starts with `blk` and Base ID starts with `app`
+- Make sure you have access permissions to the Airtable base
+- Try refreshing the Airtable page and restarting the development server
 
 ## Models and API Keys
 
@@ -123,12 +116,12 @@ The application has a centralized model configuration system located in `lib/mod
 
 ### Supported Models
 
-#### OpenAI (Direct API - No Proxy Required)
+#### OpenAI (Direct API)
 - **GPT-4.1** - Successor to GPT-4 Turbo, highly capable flagship model
 - **GPT-4o** - Latest multimodal model with advanced capabilities
 - **GPT-4o mini** - Fast, cost-effective version of GPT-4o (default)
 
-#### Anthropic (Requires Proxy Server)  
+#### Anthropic (Direct API)
 - **Claude Opus 4** - Latest most capable model from Anthropic
 - **Claude Sonnet 4** - Latest balanced model from Anthropic
 - **Claude 3.5 Haiku** - Latest fast and cost-effective model from Anthropic (default)

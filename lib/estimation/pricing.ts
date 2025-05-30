@@ -70,31 +70,8 @@ export const getModelPricing = (modelId: string): ModelPricing | null => {
 };
 
 /**
- * Convert USD to other currencies (approximate rates)
+ * Format currency amount for display (USD only)
  */
-export const convertCurrency = (usdAmount: number, targetCurrency: string): number => {
-  const exchangeRates = {
-    USD: 1.0,
-    GBP: 0.79, // TODO: Update with current USD to GBP rate
-    EUR: 0.92, // TODO: Update with current USD to EUR rate
-    CAD: 1.35, // TODO: Update with current USD to CAD rate
-  };
-
-  const rate = exchangeRates[targetCurrency as keyof typeof exchangeRates] || 1.0;
-  return usdAmount * rate;
-};
-
-/**
- * Format currency amount for display
- */
-export const formatCurrency = (amount: number, currency = 'USD'): string => {
-  const symbols = {
-    USD: '$',
-    GBP: '£',
-    EUR: '€',
-    CAD: 'C$',
-  };
-
-  const symbol = symbols[currency as keyof typeof symbols] || currency;
-  return `${symbol}${amount.toFixed(3)}`;
+export const formatCurrency = (amount: number): string => {
+  return `$${amount.toFixed(3)}`;
 };

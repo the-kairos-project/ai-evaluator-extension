@@ -1,4 +1,4 @@
-import type { Record as AirtableRecord } from '@airtable/blocks/models';
+import type { Record as AirtableRecord, Table } from '@airtable/blocks/models';
 import pRetry from 'p-retry';
 import { getChatCompletion } from './getChatCompletion';
 import type { Preset } from './preset';
@@ -40,6 +40,54 @@ const getApplicantIdentifier = (applicant: Record<string, string>): string => {
   }
 
   return 'unknown';
+};
+
+/**
+ * Extracts applicant name from record for display purposes
+ * Tries primary field first, then any field containing "name", finally falls back to record ID
+ */
+const getApplicantName = (applicant: AirtableRecord): string => {
+  try {
+    // Try to get the primary field value (usually the name)
+    const primaryField = (applicant as any).parentTable?.primaryField;
+    if (primaryField) {
+      const primaryValue = applicant.getCellValueAsString(primaryField.id);
+      if (primaryValue?.trim()) {
+        return primaryValue.trim();
+      }
+    }
+
+    // Fallback: look for any field containing "name"
+    const allFields = (applicant as any).parentTable?.fields || [];
+    for (const field of allFields) {
+      if (field.name.toLowerCase().includes('name')) {
+        const value = applicant.getCellValueAsString(field.id);
+        if (value?.trim()) {
+          return value.trim();
+        }
+      }
+    }
+  } catch (error) {
+    // Continue to final fallback
+  }
+
+  // Final fallback: use record ID
+  return `Applicant ${applicant.id}`;
+};
+
+/**
+ * Sets the applicant's name in the evaluation record's primary field
+ * This ensures the evaluation record has a readable name for identification
+ */
+const setApplicantNameInResult = (
+  result: Record<string, unknown>,
+  applicant: AirtableRecord,
+  evaluationTable?: Table
+): void => {
+  if (!evaluationTable?.primaryField) return;
+
+  const applicantName = getApplicantName(applicant);
+  result[evaluationTable.primaryField.id] = applicantName;
 };
 
 // Helper to get field names from the table
@@ -134,7 +182,8 @@ const determineSkipFields = (
 export const evaluateApplicants = (
   applicants: AirtableRecord[],
   preset: Preset,
-  setProgress: SetProgress
+  setProgress: SetProgress,
+  evaluationTable?: Table
 ): Promise<Record<string, unknown>>[] => {
   // Fast path: if empty, nothing to process
   if (!applicants.length || !preset.evaluationFields.length) {
@@ -162,6 +211,11 @@ export const evaluateApplicants = (
     );
   }
 
+  // Log setup info
+  if (evaluationTable?.primaryField) {
+    console.log(`📝 Will populate primary field: ${evaluationTable.primaryField.name}`);
+  }
+
   // Process each applicant
   return applicants.map(async (applicant) => {
     // Create a progress updater specific to this applicant
@@ -179,10 +233,14 @@ export const evaluateApplicants = (
     // Convert the applicant record to a plain object
     const plainRecord = convertToPlainRecord(applicant, preset);
 
-    // Fast path: if no fields need evaluation (all are dependent), return empty result
+    // Fast path: if no fields need evaluation, return minimal result
     if (!hasStandaloneFields && dependencyMap.size === 0) {
       const result: Record<string, unknown> = {};
       result[preset.evaluationApplicantField] = [{ id: applicant.id }];
+
+      // Set applicant name in evaluation record
+      setApplicantNameInResult(result, applicant, evaluationTable);
+
       return result;
     }
 
@@ -199,6 +257,10 @@ export const evaluateApplicants = (
     );
 
     result[preset.evaluationApplicantField] = [{ id: applicant.id }];
+
+    // Set applicant name in evaluation record
+    setApplicantNameInResult(result, applicant, evaluationTable);
+
     return result;
   });
 };
@@ -382,6 +444,37 @@ const evaluateApplicant = async (
   return combined;
 };
 
+/**
+ * Helper to build error context string for ranking errors
+ */
+const buildRankingErrorContext = (
+  rankingKeyword: string,
+  fieldIdentifier?: string,
+  applicantIdentifier?: string
+): string => {
+  let context = `(${rankingKeyword})`;
+  if (fieldIdentifier) context += ` for field "${fieldIdentifier}"`;
+  if (applicantIdentifier) context += ` for applicant "${applicantIdentifier}"`;
+  return context;
+};
+
+/**
+ * Validates that a parsed ranking value is an integer within the 1-5 range
+ */
+const validateRankingValue = (
+  rawValue: string,
+  parsedInt: number,
+  context: string
+): void => {
+  if (Math.abs(parsedInt - Number.parseFloat(rawValue)) > 0.01) {
+    throw new Error(`Non-integer final ranking: ${rawValue} ${context}`);
+  }
+
+  if (parsedInt < 1 || parsedInt > 5) {
+    throw new Error(`Rating ${parsedInt} is out of range (must be 1-5) ${context}`);
+  }
+};
+
 // TODO: test if returning response in JSON is better
 const extractFinalRanking = (
   text: string,
@@ -389,32 +482,22 @@ const extractFinalRanking = (
   fieldIdentifier?: string,
   applicantIdentifier?: string
 ): number => {
-  // Look for normal rating
   const regex = new RegExp(`${rankingKeyword}\\s*=\\s*([\\d\\.]+)`);
   const match = text.match(regex);
+  const context = buildRankingErrorContext(
+    rankingKeyword,
+    fieldIdentifier,
+    applicantIdentifier
+  );
 
-  if (match?.[1]) {
-    const asInt = Number.parseInt(match[1]);
-    if (Math.abs(asInt - Number.parseFloat(match[1])) > 0.01) {
-      throw new Error(
-        `Non-integer final ranking: ${match[1]} (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
-      );
-    }
-
-    // Validate rating is within 1-5 range (Airtable rating field constraint)
-    if (asInt < 1 || asInt > 5) {
-      throw new Error(
-        `Rating ${asInt} is out of range (must be 1-5) (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
-      );
-    }
-
-    return asInt;
+  if (!match?.[1]) {
+    throw new Error(`Missing final ranking ${context}`);
   }
 
-  // No rating found
-  throw new Error(
-    `Missing final ranking (${rankingKeyword})${fieldIdentifier ? ` for field "${fieldIdentifier}"` : ''}${applicantIdentifier ? ` for applicant "${applicantIdentifier}"` : ''}`
-  );
+  const parsedInt = Number.parseInt(match[1]);
+  validateRankingValue(match[1], parsedInt, context);
+
+  return parsedInt;
 };
 
 const evaluateItem = async (

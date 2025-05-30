@@ -1,159 +1,123 @@
-import { getActiveTemplate, getPromptSettings } from '../prompts';
-import { convertCurrency, formatCurrency, getModelPricing } from './pricing';
-// Main cost estimator - combines token counting and pricing
-import type { TokenCount } from './tokenCounter';
-import { estimateBatchTokens, estimateEvaluationTokens } from './tokenCounter';
+import { formatCurrency, getModelPricing } from './pricing';
+
+export interface TokenBreakdown {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+}
 
 export interface CostEstimate {
-  tokenBreakdown: TokenCount;
   costUSD: number;
   costLocal: number;
   currency: string;
-  modelUsed: string;
+  tokenBreakdown: TokenBreakdown[];
   breakdown: {
     inputCost: number;
     outputCost: number;
-    totalEvaluations: number;
   };
   warnings: string[];
 }
 
 /**
- * Calculate cost estimate for a batch of evaluations
+ * Estimate the cost of evaluating multiple entries
+ * @param estimatedInputTokens Average tokens per entry for input
+ * @param estimatedOutputTokens Average tokens per entry for output
+ * @param numberOfEntries Number of entries to evaluate
+ * @param modelId Model identifier (e.g., 'gpt-4o-mini', 'claude-3-5-haiku-20241022')
+ * @returns Cost estimate with token and cost breakdown
  */
-export const estimateBatchCost = (
-  applicants: Record<string, string>[],
-  evaluationFields: Array<{ criteria: string }>,
-  selectedModel: string,
-  targetCurrency = 'USD'
+export const estimateCost = (
+  estimatedInputTokens: number,
+  estimatedOutputTokens: number,
+  numberOfEntries: number,
+  modelId: string
 ): CostEstimate => {
+  const pricing = getModelPricing(modelId);
+  if (!pricing) {
+    throw new Error(`No pricing data available for model: ${modelId}`);
+  }
+
   const warnings: string[] = [];
 
-  // Get current prompt settings
-  const promptSettings = getPromptSettings();
-  const template = getActiveTemplate();
+  // Calculate total tokens
+  const totalInputTokens = estimatedInputTokens * numberOfEntries;
+  const totalOutputTokens = estimatedOutputTokens * numberOfEntries;
 
-  // Get model pricing
-  const pricing = getModelPricing(selectedModel);
-  if (!pricing) {
-    warnings.push(
-      `Pricing not found for model ${selectedModel}. Using GPT-4o estimates.`
-    );
-    // Fallback to GPT-4o pricing if model not found
-    const fallbackPricing = getModelPricing('gpt-4o');
-    if (!fallbackPricing) {
-      throw new Error('No pricing data available for cost estimation');
-    }
-  }
-
-  const modelPricing = pricing || getModelPricing('gpt-4o')!;
-
-  // Calculate token usage
-  const tokenBreakdown = estimateBatchTokens(
-    applicants,
-    evaluationFields,
-    template.systemMessage,
-    promptSettings.additionalInstructions
-  );
-
-  // Calculate costs
-  const inputCostUSD =
-    (tokenBreakdown.inputTokens / 1000) * modelPricing.inputTokensPerK;
-  const outputCostUSD =
-    (tokenBreakdown.outputTokens / 1000) * modelPricing.outputTokensPerK;
+  // Calculate costs (pricing is per 1K tokens)
+  const inputCostUSD = (totalInputTokens / 1000) * pricing.inputTokensPerK;
+  const outputCostUSD = (totalOutputTokens / 1000) * pricing.outputTokensPerK;
   const totalCostUSD = inputCostUSD + outputCostUSD;
 
-  // Convert to target currency
-  const totalCostLocal = convertCurrency(totalCostUSD, targetCurrency);
-
-  // Add warnings for expensive operations
+  // Add warnings for high costs
   if (totalCostUSD > 10) {
     warnings.push(
-      `High cost estimate: ${formatCurrency(totalCostUSD, 'USD')}. Consider testing with fewer evaluations first.`
+      `High cost estimate: ${formatCurrency(totalCostUSD)}. Consider testing with fewer evaluations first.`
     );
   }
 
-  if (tokenBreakdown.totalTokens > 1000000) {
-    warnings.push(
-      `Very high token usage: ${tokenBreakdown.totalTokens.toLocaleString()} tokens. This may take significant time.`
-    );
-  }
-
-  const totalEvaluations = applicants.length * evaluationFields.length;
-  if (totalEvaluations > 100) {
-    warnings.push(
-      `Large batch: ${totalEvaluations} evaluations. Consider running in smaller batches.`
-    );
-  }
+  // Prepare token breakdown for display
+  const tokenBreakdown: TokenBreakdown[] = [
+    {
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      model: modelId,
+    },
+  ];
 
   return {
-    tokenBreakdown,
     costUSD: totalCostUSD,
-    costLocal: totalCostLocal,
-    currency: targetCurrency,
-    modelUsed: selectedModel,
+    costLocal: totalCostUSD,
+    currency: 'USD',
+    tokenBreakdown,
     breakdown: {
-      inputCost: convertCurrency(inputCostUSD, targetCurrency),
-      outputCost: convertCurrency(outputCostUSD, targetCurrency),
-      totalEvaluations,
+      inputCost: inputCostUSD,
+      outputCost: outputCostUSD,
     },
     warnings,
   };
 };
 
 /**
- * Calculate cost estimate for a single evaluation (for preview/testing)
+ * Estimate the cost of a single evaluation
+ * @param estimatedInputTokens Tokens for input
+ * @param estimatedOutputTokens Tokens for output
+ * @param modelId Model identifier
+ * @returns Cost estimate for a single evaluation
  */
 export const estimateSingleCost = (
-  applicantData: Record<string, string>,
-  criteria: string,
-  selectedModel: string,
-  targetCurrency = 'USD'
+  estimatedInputTokens: number,
+  estimatedOutputTokens: number,
+  modelId: string
 ): CostEstimate => {
-  const warnings: string[] = [];
-
-  // Get current prompt settings
-  const promptSettings = getPromptSettings();
-  const template = getActiveTemplate();
-
-  // Get model pricing
-  const pricing = getModelPricing(selectedModel);
+  const pricing = getModelPricing(modelId);
   if (!pricing) {
-    warnings.push(
-      `Pricing not found for model ${selectedModel}. Using GPT-4o estimates.`
-    );
+    throw new Error(`No pricing data available for model: ${modelId}`);
   }
 
-  const modelPricing = pricing || getModelPricing('gpt-4o')!;
+  const warnings: string[] = [];
 
-  // Calculate token usage for single evaluation
-  const tokenBreakdown = estimateEvaluationTokens(
-    applicantData,
-    template.systemMessage,
-    criteria,
-    promptSettings.additionalInstructions
-  );
-
-  // Calculate costs
-  const inputCostUSD =
-    (tokenBreakdown.inputTokens / 1000) * modelPricing.inputTokensPerK;
-  const outputCostUSD =
-    (tokenBreakdown.outputTokens / 1000) * modelPricing.outputTokensPerK;
+  // Calculate costs (pricing is per 1K tokens)
+  const inputCostUSD = (estimatedInputTokens / 1000) * pricing.inputTokensPerK;
+  const outputCostUSD = (estimatedOutputTokens / 1000) * pricing.outputTokensPerK;
   const totalCostUSD = inputCostUSD + outputCostUSD;
 
-  // Convert to target currency
-  const totalCostLocal = convertCurrency(totalCostUSD, targetCurrency);
+  // Prepare token breakdown for display
+  const tokenBreakdown: TokenBreakdown[] = [
+    {
+      inputTokens: estimatedInputTokens,
+      outputTokens: estimatedOutputTokens,
+      model: modelId,
+    },
+  ];
 
   return {
-    tokenBreakdown,
     costUSD: totalCostUSD,
-    costLocal: totalCostLocal,
-    currency: targetCurrency,
-    modelUsed: selectedModel,
+    costLocal: totalCostUSD,
+    currency: 'USD',
+    tokenBreakdown,
     breakdown: {
-      inputCost: convertCurrency(inputCostUSD, targetCurrency),
-      outputCost: convertCurrency(outputCostUSD, targetCurrency),
-      totalEvaluations: 1,
+      inputCost: inputCostUSD,
+      outputCost: outputCostUSD,
     },
     warnings,
   };
@@ -163,15 +127,45 @@ export const estimateSingleCost = (
  * Format cost estimate for display
  */
 export const formatCostEstimate = (estimate: CostEstimate): string => {
-  const { tokenBreakdown, costLocal, currency, breakdown, warnings } = estimate;
+  const { tokenBreakdown, costLocal, breakdown, warnings } = estimate;
 
-  let result = `${breakdown.totalEvaluations} evaluation${breakdown.totalEvaluations > 1 ? 's' : ''}: `;
-  result += `${tokenBreakdown.totalTokens.toLocaleString()} tokens `;
-  result += `≈ ${formatCurrency(costLocal, currency)}`;
+  let result = '';
 
+  // Add cost information
+  result += `≈ ${formatCurrency(costLocal)}`;
+
+  // Add breakdown if helpful
+  if (breakdown.inputCost > 0 || breakdown.outputCost > 0) {
+    result += ` (${formatCurrency(breakdown.inputCost)} input + ${formatCurrency(breakdown.outputCost)} output)`;
+  }
+
+  // Add token information
+  if (tokenBreakdown.length === 1) {
+    const tb = tokenBreakdown[0];
+    result += ` • ${tb.inputTokens.toLocaleString()} input + ${tb.outputTokens.toLocaleString()} output tokens`;
+  }
+
+  // Add warnings
   if (warnings.length > 0) {
-    result += `\n⚠️ ${warnings[0]}`;
+    result += `\n⚠️ ${warnings.join('\n⚠️ ')}`;
   }
 
   return result;
+};
+
+/**
+ * Backwards-compatible wrapper for batch cost estimation
+ * @deprecated Use estimateCost directly with token estimates
+ */
+export const estimateBatchCost = (
+  applicants: Record<string, string>[],
+  evaluationFields: Array<{ criteria: string }>,
+  modelId: string
+): CostEstimate => {
+  // Simple estimation based on data length - this is a rough approximation
+  const avgInputTokens = 500; // Average tokens per evaluation input
+  const avgOutputTokens = 100; // Average tokens per evaluation output
+  const totalEvaluations = applicants.length * evaluationFields.length;
+
+  return estimateCost(avgInputTokens, avgOutputTokens, totalEvaluations, modelId);
 };

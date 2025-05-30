@@ -120,11 +120,6 @@ const getCurrentModel = (): string => {
   return (globalConfig.get('anthropicModel') as string) || 'claude-3-5-sonnet-20241022';
 };
 
-// Helper function to get preferred currency from settings
-const getPreferredCurrency = (): string => {
-  return (globalConfig.get('preferredCurrency') as string) || 'USD';
-};
-
 const renderPreviewText = (
   numberOfApplicants: number,
   numberOfEvaluationCriteria: number,
@@ -137,12 +132,10 @@ const renderPreviewText = (
   if (applicantsData && evaluationFields && applicantsData.length > 0) {
     try {
       const currentModel = getCurrentModel();
-      const preferredCurrency = getPreferredCurrency();
       const estimate = estimateBatchCost(
         applicantsData,
         evaluationFields,
-        currentModel,
-        preferredCurrency
+        currentModel
       );
       const costText = formatCostEstimate(estimate);
 
@@ -249,7 +242,8 @@ export const MainPage = () => {
           const overallProgressOffset = batchStart / applicantsToProcess.length;
 
           setProgress(() => 0.1 + 0.9 * (overallProgressOffset + batchContribution));
-        }
+        },
+        evaluationTable // Pass the evaluation table for name field population
       );
       console.log(
         `✅ Generated ${batchEvaluationPromises.length} evaluation promises for batch ${batchNumber}`
@@ -757,6 +751,40 @@ export const MainPage = () => {
     setShowFailedModal(false);
   };
 
+  /**
+   * Handle debug API info button click - displays current API keys and model status
+   */
+  const handleDebugApiInfo = () => {
+    import('../lib/getChatCompletion/apiKeyManager').then((module) => {
+      const openAiKey = module.getOpenAiApiKey();
+      const anthropicKey = module.getAnthropicApiKey();
+      const selectedProvider = module.getSelectedModelProvider();
+      const openAiModel = module.getOpenAiModelName();
+      const anthropicModel = module.getAnthropicModelName();
+      const activeModelName =
+        selectedProvider === 'openai' ? openAiModel : anthropicModel;
+
+      // Create debug info element
+      const debugInfo = document.createElement('div');
+      debugInfo.className = 'mt-2 p-1 bg-blue-100 rounded';
+      debugInfo.innerHTML = `
+        <p>${PROVIDER_ICONS[selectedProvider] || '🔧'} <strong>Provider:</strong> ${selectedProvider === 'openai' ? 'OpenAI' : 'Anthropic Claude'}</p>
+        <p>📋 <strong>Model:</strong> ${formatModelName(activeModelName)}</p>
+        <p>🔑 <strong>API Keys:</strong> OpenAI: ${openAiKey ? '✅' : '❌'}, Anthropic: ${anthropicKey ? '✅' : '❌'}</p>
+      `;
+
+      // Find debug container and update it
+      const debugDiv = document.querySelector('.mb-4.p-2.bg-gray-100.rounded.text-xs');
+      if (debugDiv) {
+        const existingInfo = debugDiv.querySelector('.mt-2.p-1.bg-blue-100.rounded');
+        if (existingInfo) {
+          existingInfo.remove();
+        }
+        debugDiv.appendChild(debugInfo);
+      }
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* API Keys Debug block */}
@@ -765,44 +793,7 @@ export const MainPage = () => {
           API Key config:{' '}
           <button
             type="button"
-            onClick={() => {
-              import('../lib/getChatCompletion/apiKeyManager').then((module) => {
-                const openAiKey = module.getOpenAiApiKey();
-                const anthropicKey = module.getAnthropicApiKey();
-
-                const selectedProvider = module.getSelectedModelProvider();
-                const openAiModel = module.getOpenAiModelName();
-                const anthropicModel = module.getAnthropicModelName();
-
-                const activeModelName =
-                  selectedProvider === 'openai' ? openAiModel : anthropicModel;
-
-                // UI feedback
-                const debugInfo = document.createElement('div');
-                debugInfo.className = 'mt-2 p-1 bg-blue-100 rounded';
-                debugInfo.innerHTML = `
-              <p>${PROVIDER_ICONS[selectedProvider] || '🔧'} <strong>Provider:</strong> ${selectedProvider === 'openai' ? 'OpenAI' : 'Anthropic Claude'}</p>
-              <p>📋 <strong>Model:</strong> ${formatModelName(activeModelName)}</p>
-              <p>🔑 <strong>API Keys:</strong> 
-                OpenAI: ${openAiKey ? '✅' : '❌'}, 
-                Anthropic: ${anthropicKey ? '✅' : '❌'}
-              </p>
-            `;
-
-                const debugDiv = document.querySelector(
-                  '.mb-4.p-2.bg-gray-100.rounded.text-xs'
-                );
-                if (debugDiv) {
-                  const existingInfo = debugDiv.querySelector(
-                    '.mt-2.p-1.bg-blue-100.rounded'
-                  );
-                  if (existingInfo) {
-                    existingInfo.remove();
-                  }
-                  debugDiv.appendChild(debugInfo);
-                }
-              });
-            }}
+            onClick={handleDebugApiInfo}
             className="underline text-blue-500"
           >
             Check API Keys and Model
