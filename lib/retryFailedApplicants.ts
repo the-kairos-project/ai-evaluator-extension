@@ -65,7 +65,12 @@ export const retryFailedApplicants = async (
   setResult(`Retrying ${records.length} failed applicants...`);
 
   // Use single-batch processing for retry (simpler approach)
-  const evaluationPromises = evaluateApplicants(records, preset, setProgress);
+  const evaluationPromises = evaluateApplicants(
+    records,
+    preset,
+    setProgress,
+    evaluationTable
+  );
 
   if (evaluationPromises.length === 0) {
     setResult('No evaluation promises generated for retry');

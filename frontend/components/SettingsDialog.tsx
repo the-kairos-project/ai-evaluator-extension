@@ -81,9 +81,6 @@ export const SettingsDialog = ({
   );
   const [additionalInstructions, setAdditionalInstructions] = useState('');
 
-  // Cost estimation settings
-  const [preferredCurrency, setPreferredCurrency] = useState('USD');
-
   // Concurrency settings
   const [apiConcurrency, setApiConcurrency] = useState(DEFAULT_CONCURRENCY);
 
@@ -116,10 +113,6 @@ export const SettingsDialog = ({
     setRankingKeyword(promptSettings.rankingKeyword);
     setAdditionalInstructions(promptSettings.additionalInstructions);
 
-    // Load currency preference
-    const storedCurrency = (globalConfig.get('preferredCurrency') as string) || 'USD';
-    setPreferredCurrency(storedCurrency);
-
     // Load concurrency setting
     const storedConcurrency = getCurrentConcurrency();
     setApiConcurrency(storedConcurrency);
@@ -133,9 +126,6 @@ export const SettingsDialog = ({
       await globalConfig.setAsync('openAiModel', openAiModel);
       await globalConfig.setAsync('anthropicModel', anthropicModel);
       await globalConfig.setAsync('showDetailedHelp', showDetailedHelp);
-
-      // Save currency preference
-      await globalConfig.setAsync('preferredCurrency', preferredCurrency);
 
       // Save concurrency setting
       await saveConcurrency(apiConcurrency);
@@ -334,22 +324,6 @@ export const SettingsDialog = ({
                 backgroundColor={showDetailedHelp ? '#3b82f6' : '#d1d5db'}
               />
             </div>
-
-            <FormField label="Preferred Currency for Cost Estimates" className="mb-2">
-              <Select
-                options={[
-                  { label: '$ USD (US Dollar)', value: 'USD' },
-                  { label: '£ GBP (British Pound)', value: 'GBP' },
-                  { label: '€ EUR (Euro)', value: 'EUR' },
-                  { label: 'C$ CAD (Canadian Dollar)', value: 'CAD' },
-                ]}
-                value={preferredCurrency}
-                onChange={(value) => setPreferredCurrency(value as string)}
-              />
-              <div className="mt-1 text-xs text-gray-500">
-                Currency for displaying cost estimates (rates are approximate)
-              </div>
-            </FormField>
 
             <FormField label="API Concurrency" className="mb-2">
               <Select
