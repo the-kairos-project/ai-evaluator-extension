@@ -543,18 +543,61 @@ export const MainPage = () => {
 
   // Validate prerequisites before running
   const validatePrerequisites = () => {
-    if (!applicantTable) throw new Error('Could not access applicant table');
-    if (!evaluationTable) throw new Error('Could not access evaluation table');
-    if (!preset.applicantFields.length) throw new Error('No input fields selected');
-    if (!preset.evaluationFields.length) throw new Error('No output fields selected');
+    // Check if user has permission to create records in evaluation table
+    const createPermission = evaluationTable?.checkPermissionsForCreateRecord();
+    if (!createPermission?.hasPermission) {
+      const reason =
+        'reasonDisplayString' in createPermission
+          ? createPermission.reasonDisplayString
+          : 'Permission denied';
+      throw new Error(`Cannot create evaluation records: ${reason}`);
+    }
+
+    // Check if user has permission to update GlobalConfig (only editors and above)
+    const configPermission = globalConfig.checkPermissionsForSet();
+    if (!configPermission.hasPermission) {
+      const reason =
+        'reasonDisplayString' in configPermission
+          ? configPermission.reasonDisplayString
+          : 'Permission denied';
+      throw new Error(`Cannot update settings: ${reason}`);
+    }
+
+    if (!applicantTable || !evaluationTable) {
+      throw new Error('Please select both applicant and evaluation tables');
+    }
+    if (!preset.applicantViewId) {
+      throw new Error('Please select an applicant view');
+    }
+    if (!preset.evaluationApplicantField) {
+      throw new Error('Please select an applicant field in the evaluation table');
+    }
+    if (preset.applicantFields.length === 0) {
+      throw new Error('Please select at least one applicant field');
+    }
+    if (preset.evaluationFields.length === 0) {
+      throw new Error('Please select at least one evaluation field');
+    }
   };
 
   // Handle the evaluation process
   const processEvaluation = async () => {
     // Get applicant records
     setResult('Getting applicant records...');
-    const applicantView = applicantTable.getViewById(preset.applicantViewId);
-    const applicantRecords = await applicantView.selectRecordsAsync();
+    const applicantView = applicantTable.getViewByIdIfExists(preset.applicantViewId);
+    if (!applicantView) {
+      throw new Error('Selected applicant view no longer exists');
+    }
+
+    // Only load the fields we actually need to reduce memory usage
+    const fieldsToLoad = [
+      ...preset.applicantFields.map((f) => f.fieldId),
+      applicantTable.primaryField.id,
+    ].filter(Boolean);
+
+    const applicantRecords = await applicantView.selectRecordsAsync({
+      fields: fieldsToLoad,
+    });
 
     const previewText = renderPreviewText(
       applicantRecords.records.length,
@@ -652,8 +695,20 @@ export const MainPage = () => {
 
       // Get applicant records for cost estimation
       setResult('Calculating cost estimate...');
-      const applicantView = applicantTable.getViewById(preset.applicantViewId);
-      const applicantRecords = await applicantView.selectRecordsAsync();
+      const applicantView = applicantTable.getViewByIdIfExists(preset.applicantViewId);
+      if (!applicantView) {
+        throw new Error('Selected applicant view no longer exists');
+      }
+
+      // Only load the fields we actually need to reduce memory usage
+      const fieldsToLoad = [
+        ...preset.applicantFields.map((f) => f.fieldId),
+        applicantTable.primaryField.id,
+      ].filter(Boolean);
+
+      const applicantRecords = await applicantView.selectRecordsAsync({
+        fields: fieldsToLoad,
+      });
 
       const previewText = renderPreviewText(
         applicantRecords.records.length,
