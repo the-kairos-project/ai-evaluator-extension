@@ -1,4 +1,10 @@
 {
     "version": "1.0",
-    "frontendEntry": "./frontend/index.tsx"
+    "frontendEntry": "./frontend/index.tsx",
+    "name": "AI Application Evaluator",
+    "description": "Automatically evaluate job/course applications using AI (OpenAI GPT-4 or Anthropic Claude). Set evaluation criteria, configure fields, and let AI provide consistent, objective scoring for applicants.",
+    "category": "productivity",
+    "tags": ["ai", "automation", "evaluation", "screening", "applications"],
+    "screenshots": ["./screenshot.png"],
+    "readme": "./README.md"
 }

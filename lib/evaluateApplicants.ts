@@ -110,7 +110,7 @@ const getFieldNames = (
       }
 
       try {
-        const field = table.getFieldById(fieldId);
+        const field = table.getFieldByIdIfExists(fieldId);
         if (field) {
           const fieldName = field.name;
           // Cache for future use
