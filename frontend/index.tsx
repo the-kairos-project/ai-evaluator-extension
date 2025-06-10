@@ -1,9 +1,9 @@
+import type { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
 import { Icon, initializeBlock, loadScriptFromURLAsync } from '@airtable/blocks/ui';
 import { Tab } from '@headlessui/react';
 import React, { Fragment, useState } from 'react';
-import type { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
-import { PresetManager } from './components/PresetManager';
 import { MainPage } from './MainPage';
+import { PresetManager } from './components/PresetManager';
 import { SettingsDialog } from './components/SettingsDialog';
 
 const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
@@ -12,9 +12,7 @@ const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
       {({ selected }) => (
         <button
           type="button"
-          className={
-            `flex px-2 py-1 ${selected ? 'text-slate-50' : 'text-slate-400'}`
-          }
+          className={`flex px-2 py-1 ${selected ? 'text-slate-50' : 'text-slate-400'}`}
         >
           <Icon name={icon} size={16} />
           <span className="ml-1 tracking-widest uppercase text-xs font-medium">
@@ -28,11 +26,11 @@ const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  
+
   const openSettings = () => {
     setSettingsOpen(true);
   };
-  
+
   const closeSettings = () => {
     setSettingsOpen(false);
   };
@@ -47,6 +45,7 @@ function App() {
           <div className="flex items-center">
             <PresetManager />
             <button
+              type="button"
               onClick={openSettings}
               className="ml-2 bg-slate-200 text-slate-700 h-7 px-2 rounded flex items-center"
               aria-label="Settings"
@@ -62,7 +61,7 @@ function App() {
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
-      
+
       <SettingsDialog isOpen={settingsOpen} onClose={closeSettings} />
     </main>
   );
