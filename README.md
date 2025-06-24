@@ -14,9 +14,10 @@ This repository holds code for an Airtable extension that we can run inside our 
 
 ## Quick Start
 
-**Simple setup for both OpenAI and Anthropic:**
-1. Clone repo, install dependencies: `bun install`
-2. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
+**Simple setup for both OpenAI and Anthropic:**'
+1. Install [Bun](https://bun.sh/) with `curl -fsSL https://bun.sh/install | bash`
+2. Clone repo, install dependencies: `bun install`
+3. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
    ```json
    {
      "blockId": "blkYourBlockId",
@@ -25,9 +26,9 @@ This repository holds code for an Airtable extension that we can run inside our 
    ```
    - **Base ID**: Found in your Airtable base URL - it's the first part after `airtable.com/` (starts with `app`)
    - **Block ID**: Generated when you first create the extension in Airtable (starts with `blk`) - only available during initial creation
-3. Run: `bun run start:applications`
-4. Configure API and model via settings on the extension page in Airtable
-5. ✅ Ready to evaluate! (Uses `gpt-4o-mini` or `claude-3-5-haiku` by default)
+4. Run: `bun run start:applications`
+5. Configure API and model via settings on the extension page in Airtable
+6. ✅ Ready to evaluate! (Uses `gpt-4o-mini` or `claude-3-5-haiku` by default)
 
 ## Developer setup
 
@@ -36,10 +37,9 @@ This repository holds code for an Airtable extension that we can run inside our 
 To start developing this extension:
 
 1. Clone this git repository
-2. Install [Node.js](https://nodejs.org/)
-3. Install [Bun](https://bun.sh/) with `curl -fsSL https://bun.sh/install | bash`
-4. Run `bun install`
-5. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
+2. Install [Bun](https://bun.sh/) with `curl -fsSL https://bun.sh/install | bash`
+3. Run `bun install`
+4. **Configure Airtable connection:** Edit `.block/applications.remote.json` with your base and block IDs:
    ```json
    {
      "blockId": "blkYourBlockId",
@@ -48,10 +48,10 @@ To start developing this extension:
    ```
    - **Base ID**: Found in your Airtable base URL - it's the first part after `airtable.com/` (starts with `app`)
    - **Block ID**: Generated when you first create the extension in Airtable (starts with `blk`) - only available during initial creation
-6. Run `bun run start`
-7. Load the relevant base
-8. Configure API key and model in the extension settings
-9. Make changes to the code and see them reflected in the app!
+5. Run `bun run start`
+6. Load the Airtable base you want to use the tool in
+7. Configure the API key and and select a model in the extension settings
+8. Make changes to the code and see them reflected in the app!
 
 If the changes don't appear to be updating the app, try clicking the extension name then 'Edit extension', then pasting in the server address printed to the console from step 7 (probably `https://localhost:9000`).
 
