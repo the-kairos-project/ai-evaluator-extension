@@ -32,7 +32,9 @@ This repository holds code for an Airtable extension that we can run inside our 
 
 ## Developer setup
 
-> [Video tutorial](https://www.youtube.com/watch?v=nhnPxvEZmLk)
+> [Video tutorial](https://drive.google.com/file/d/1b4pouYUZI3HvcEMCCpBXrZ4vr6Ltb6Fi/view?usp=sharing)
+
+> [Legacy video tutorial](https://www.youtube.com/watch?v=nhnPxvEZmLk)
 
 To start developing this extension:
 
