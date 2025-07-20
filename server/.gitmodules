@@ -1,0 +1,3 @@
+[submodule "external/linkedin-mcp-server"]
+	path = external/linkedin-mcp-server
+	url = https://github.com/stickerdaniel/linkedin-mcp-server.git
