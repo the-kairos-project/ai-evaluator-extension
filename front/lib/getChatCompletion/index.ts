@@ -2,6 +2,7 @@ import type { ModelProvider } from '../models/config';
 import { getChatCompletion as anthropicGetChatCompletion } from './anthropic';
 import { getSelectedModelProvider } from './apiKeyManager';
 import { getChatCompletion as openAiGetChatCompletion } from './openai';
+import { getChatCompletion as serverGetChatCompletion, isServerModeEnabled } from './server';
 
 export type Prompt = {
   role: 'system' | 'user' | 'assistant' | 'function';
@@ -10,27 +11,40 @@ export type Prompt = {
 export type GetChatCompletion = (messages: Prompt) => Promise<string>;
 
 /**
- * Returns the appropriate chat completion function based on the selected model provider
+ * Gets the appropriate chat completion function for the given provider
  */
-export const getChatCompletionForProvider = (
+export function getChatCompletionForProvider(
   provider: ModelProvider
-): GetChatCompletion => {
+): GetChatCompletion {
   switch (provider) {
     case 'openai':
       return openAiGetChatCompletion;
     case 'anthropic':
       return anthropicGetChatCompletion;
     default:
-      return openAiGetChatCompletion;
+      throw new Error(`Unknown provider: ${provider}`);
   }
-};
+}
 
 /**
  * Gets a chat completion from the user-selected model provider
  */
 export const getChatCompletion: GetChatCompletion = async (messages) => {
   const selectedProvider = getSelectedModelProvider();
-  const completionFunction = getChatCompletionForProvider(selectedProvider);
+  
+  // Check if server mode is enabled
+  const useServerMode = isServerModeEnabled();
+  
+  // Add detailed logging about routing decision
+  console.log(`🔍 ROUTING DECISION: Server Mode is ${useServerMode ? 'ENABLED' : 'DISABLED'}`);
+  
+  // Use server-routed or direct API call based on setting
+  const completionFunction = useServerMode 
+    ? serverGetChatCompletion
+    : getChatCompletionForProvider(selectedProvider);
+
+  // Log which function will be used
+  console.log(`🔀 Using ${useServerMode ? 'SERVER-ROUTED' : 'DIRECT'} API call for ${selectedProvider}`);
 
   const startTime = Date.now();
   const tokenCount = messages.reduce((sum, msg) => sum + msg.content.length, 0);

@@ -1,6 +1,7 @@
 import type { Record as AirtableRecord, Table } from '@airtable/blocks/models';
 import pRetry from 'p-retry';
 import { getChatCompletion } from './getChatCompletion';
+import { isServerModeEnabled, evaluateApplicantWithServer } from './getChatCompletion/server';
 import type { Preset } from './preset';
 import {
   buildPrompt,
@@ -517,6 +518,44 @@ const evaluateItem = async (
   const settings = getPromptSettings();
   const template = getActiveTemplate();
 
+  // Check if server mode is enabled
+  if (isServerModeEnabled()) {
+    try {
+      // Use the server's evaluation endpoint
+      console.log(`Using server evaluation endpoint for ${fieldName || fieldIdentifier}`);
+      
+      const result = await evaluateApplicantWithServer(
+        applicantString,
+        processedCriteriaString,
+        settings.selectedTemplate,
+        settings.rankingKeyword,
+        settings.additionalInstructions
+      );
+      
+      // If server evaluation returned a score, use it
+      if (result.score !== null) {
+        // Create a transcript for consistency with direct mode
+        const transcript = [
+          `## user\n\n${applicantString}`,
+          `## system\n\n${template.systemMessage}`,
+          `## assistant\n\n${result.result}`
+        ].join('\n\n');
+        
+        return {
+          transcript,
+          ranking: result.score
+        };
+      }
+      
+      // If server evaluation failed or returned null score, fall back to direct mode
+      console.log(`Server evaluation failed or returned null score, falling back to direct mode for ${fieldName || fieldIdentifier}`);
+    } catch (error) {
+      // Log the error and fall back to direct mode
+      console.error(`Error using server evaluation, falling back to direct mode: ${error.message}`);
+    }
+  }
+  
+  // Direct mode evaluation (original implementation)
   // Build prompt using the template system
   const promptConfig = {
     template,
