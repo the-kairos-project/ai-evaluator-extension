@@ -79,6 +79,8 @@ export const SettingsDialog = ({
   // Server integration settings
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [useServerMode, setUseServerMode] = useState(false);
+  const [serverUsername, setServerUsername] = useState('admin');
+  const [serverPassword, setServerPassword] = useState('');
 
   // Prompt settings state
   const [selectedTemplate, setSelectedTemplate] = useState(ACADEMIC_TEMPLATE.id);
@@ -109,6 +111,10 @@ export const SettingsDialog = ({
       (globalConfig.get('serverUrl') as string) || DEFAULT_SERVER_URL;
     const storedUseServerMode = 
       (globalConfig.get('useServerMode') as boolean) || false;
+    const storedServerUsername = 
+      (globalConfig.get('serverUsername') as string) || 'admin';
+    const storedServerPassword = 
+      (globalConfig.get('serverPassword') as string) || '';
 
     // Load prompt settings
     const promptSettings = getPromptSettings();
@@ -121,6 +127,8 @@ export const SettingsDialog = ({
     setShowDetailedHelp(storedShowDetailedHelp);
     setServerUrl(storedServerUrl);
     setUseServerMode(storedUseServerMode);
+    setServerUsername(storedServerUsername);
+    setServerPassword(storedServerPassword);
 
     // Set prompt settings
     setSelectedTemplate(promptSettings.selectedTemplate);
@@ -143,6 +151,8 @@ export const SettingsDialog = ({
       await globalConfig.setAsync('showDetailedHelp', showDetailedHelp);
       await globalConfig.setAsync('serverUrl', serverUrl);
       await globalConfig.setAsync('useServerMode', useServerMode);
+      await globalConfig.setAsync('serverUsername', serverUsername);
+      await globalConfig.setAsync('serverPassword', serverPassword);
 
       // Save concurrency setting
       await saveConcurrency(apiConcurrency);
@@ -270,6 +280,33 @@ export const SettingsDialog = ({
                   URL of the MCP server (including protocol and port)
                 </div>
               </FormField>
+              
+              {useServerMode && (
+                <>
+                  <FormField label="Username" className="mb-2">
+                    <Input
+                      value={serverUsername}
+                      onChange={(e) => setServerUsername(e.target.value)}
+                      placeholder="admin"
+                    />
+                    <div className="mt-1 text-xs text-gray-500">
+                      Username for server authentication (default: admin)
+                    </div>
+                  </FormField>
+                  
+                  <FormField label="Password" className="mb-2">
+                    <Input
+                      value={serverPassword}
+                      onChange={(e) => setServerPassword(e.target.value)}
+                      placeholder="Password"
+                      type="password"
+                    />
+                    <div className="mt-1 text-xs text-gray-500">
+                      Password for server authentication (default: admin123)
+                    </div>
+                  </FormField>
+                </>
+              )}
             </div>
           </FormField>
         </div>
