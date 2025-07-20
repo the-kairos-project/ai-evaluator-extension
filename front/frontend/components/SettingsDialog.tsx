@@ -29,6 +29,9 @@ import {
   savePromptSettings,
 } from '../../lib/prompts';
 
+// Default server URL
+const DEFAULT_SERVER_URL = 'http://localhost:8000';
+
 // Convert the model providers to options for select dropdown
 const MODEL_PROVIDER_OPTIONS = MODEL_PROVIDERS.map((provider) => ({
   label: `${provider.emoji} ${provider.name}`,
@@ -72,6 +75,10 @@ export const SettingsDialog = ({
   const [openAiModel, setOpenAiModel] = useState(DEFAULT_OPENAI_MODEL);
   const [anthropicModel, setAnthropicModel] = useState(DEFAULT_ANTHROPIC_MODEL);
   const [showDetailedHelp, setShowDetailedHelp] = useState(false);
+  
+  // Server integration settings
+  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
+  const [useServerMode, setUseServerMode] = useState(false);
 
   // Prompt settings state
   const [selectedTemplate, setSelectedTemplate] = useState(ACADEMIC_TEMPLATE.id);
@@ -96,6 +103,12 @@ export const SettingsDialog = ({
       (globalConfig.get('anthropicModel') as string) || DEFAULT_ANTHROPIC_MODEL;
     const storedShowDetailedHelp =
       (globalConfig.get('showDetailedHelp') as boolean) || false;
+    
+    // Load server integration settings
+    const storedServerUrl = 
+      (globalConfig.get('serverUrl') as string) || DEFAULT_SERVER_URL;
+    const storedUseServerMode = 
+      (globalConfig.get('useServerMode') as boolean) || false;
 
     // Load prompt settings
     const promptSettings = getPromptSettings();
@@ -106,6 +119,8 @@ export const SettingsDialog = ({
     setOpenAiModel(storedOpenAiModel);
     setAnthropicModel(storedAnthropicModel);
     setShowDetailedHelp(storedShowDetailedHelp);
+    setServerUrl(storedServerUrl);
+    setUseServerMode(storedUseServerMode);
 
     // Set prompt settings
     setSelectedTemplate(promptSettings.selectedTemplate);
@@ -126,6 +141,8 @@ export const SettingsDialog = ({
       await globalConfig.setAsync('openAiModel', openAiModel);
       await globalConfig.setAsync('anthropicModel', anthropicModel);
       await globalConfig.setAsync('showDetailedHelp', showDetailedHelp);
+      await globalConfig.setAsync('serverUrl', serverUrl);
+      await globalConfig.setAsync('useServerMode', useServerMode);
 
       // Save concurrency setting
       await saveConcurrency(apiConcurrency);
@@ -219,6 +236,38 @@ export const SettingsDialog = ({
                 />
                 <div className="mt-1 text-xs text-gray-500">
                   {getModelDescription(anthropicModel, 'anthropic')}
+                </div>
+              </FormField>
+            </div>
+          </FormField>
+        </div>
+        
+        <div className="p-2 mt-2 bg-blue-50 rounded">
+          <FormField label="Server Integration">
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="font-medium text-sm">Use MCP Server</div>
+                  <div className="text-xs text-gray-500">
+                    Route API calls through MCP server instead of calling APIs directly
+                  </div>
+                </div>
+                <Switch
+                  value={useServerMode}
+                  onChange={setUseServerMode}
+                  width={44}
+                  backgroundColor={useServerMode ? '#3b82f6' : '#d1d5db'}
+                />
+              </div>
+              
+              <FormField label="Server URL" className="mb-2">
+                <Input
+                  value={serverUrl}
+                  onChange={(e) => setServerUrl(e.target.value)}
+                  placeholder="http://localhost:8000"
+                />
+                <div className="mt-1 text-xs text-gray-500">
+                  URL of the MCP server (including protocol and port)
                 </div>
               </FormField>
             </div>
