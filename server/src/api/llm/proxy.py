@@ -1,7 +1,7 @@
 """LLM proxy endpoints for OpenAI and Anthropic."""
 
+import logging
 from typing import Dict, Any, Optional, List
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -11,16 +11,15 @@ from src.api.llm.prompt_system import (
     PromptTemplate, PromptVariables, PromptConfig, 
     build_prompt, get_template, ACADEMIC_TEMPLATE
 )
+from src.api.llm.providers import (
+    Message, ProviderRequest, ProviderResponse, ProviderFactory
+)
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/llm", tags=["llm"])
-
-
-class Message(BaseModel):
-    """Message model for chat completion."""
-    
-    role: str
-    content: str
 
 
 class OpenAIRequest(BaseModel):
@@ -89,62 +88,50 @@ async def proxy_openai(
     Raises:
         HTTPException: If the request fails
     """
-    # Prepare request payload
-    payload = {
-        "model": request.model,
-        "messages": [{"role": msg.role, "content": msg.content} for msg in request.messages],
-        "max_tokens": request.max_tokens,
-    }
+    logger.info(f"OpenAI proxy request received for model: {request.model}")
+    logger.debug(f"User: {current_user.username}, Model: {request.model}, Messages: {len(request.messages)}")
     
-    # Add optional parameters if provided
-    if request.temperature is not None:
-        payload["temperature"] = request.temperature
-    if request.top_p is not None:
-        payload["top_p"] = request.top_p
-    if request.frequency_penalty is not None:
-        payload["frequency_penalty"] = request.frequency_penalty
-    if request.presence_penalty is not None:
-        payload["presence_penalty"] = request.presence_penalty
-    if request.stop:
-        payload["stop"] = request.stop
-    
-    # Make request to OpenAI API
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {request.api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            
-            # Check for errors
-            response.raise_for_status()
-            
-            # Return response
-            return response.json()
-            
-        except httpx.HTTPStatusError as e:
-            # Forward OpenAI error response
-            error_info = e.response.json() if e.response.headers.get("content-type") == "application/json" else {"error": str(e)}
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"OpenAI API error: {error_info}"
-            )
-        except httpx.RequestError as e:
-            # Network-related errors
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Error communicating with OpenAI API: {str(e)}"
-            )
-        except Exception as e:
-            # Unexpected errors
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unexpected error: {str(e)}"
-            )
+    try:
+        # Get OpenAI provider
+        provider = ProviderFactory.get_provider("openai")
+        
+        # Convert request to provider request
+        provider_request = ProviderRequest(
+            api_key=request.api_key,
+            model=request.model,
+            messages=request.messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+        )
+        
+        # Call provider
+        response = await provider.call(provider_request)
+        
+        # Log success
+        logger.info(f"OpenAI proxy request successful for model: {request.model}")
+        
+        # Return raw response
+        return response.raw_response
+        
+    except ValueError as e:
+        # Provider not supported
+        logger.error(f"Provider error in OpenAI proxy: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except HTTPException as e:
+        # Re-raise HTTP exceptions with logging
+        logger.error(f"HTTP error in OpenAI proxy: {e.status_code} - {e.detail}")
+        raise
+    except Exception as e:
+        # Unexpected errors
+        logger.exception(f"Unexpected error in OpenAI proxy: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 
 @router.post("/anthropic", status_code=status.HTTP_200_OK)
@@ -164,70 +151,50 @@ async def proxy_anthropic(
     Raises:
         HTTPException: If the request fails
     """
-    # Check if the last message is a system message
-    messages = request.messages
-    last_message_is_system = len(messages) > 0 and messages[-1].role == "system"
+    logger.info(f"Anthropic proxy request received for model: {request.model}")
+    logger.debug(f"User: {current_user.username}, Model: {request.model}, Messages: {len(request.messages)}")
     
-    # Prepare request payload
-    payload = {
-        "model": request.model,
-        "max_tokens": request.max_tokens,
-    }
-    
-    # Handle system message specially
-    if last_message_is_system:
-        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages[:-1]]
-        payload["system"] = messages[-1].content
-    else:
-        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages]
-    
-    # Add optional parameters if provided
-    if request.temperature is not None:
-        payload["temperature"] = request.temperature
-    if request.top_p is not None:
-        payload["top_p"] = request.top_p
-    if request.stop_sequences:
-        payload["stop_sequences"] = request.stop_sequences
-    
-    # Make request to Anthropic API
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                json=payload,
-                headers={
-                    "x-api-key": request.api_key,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Type": "application/json",
-                    "anthropic-dangerous-direct-browser-access": "true",
-                },
-            )
-            
-            # Check for errors
-            response.raise_for_status()
-            
-            # Return response
-            return response.json()
-            
-        except httpx.HTTPStatusError as e:
-            # Forward Anthropic error response
-            error_info = e.response.json() if e.response.headers.get("content-type") == "application/json" else {"error": str(e)}
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Anthropic API error: {error_info}"
-            )
-        except httpx.RequestError as e:
-            # Network-related errors
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Error communicating with Anthropic API: {str(e)}"
-            )
-        except Exception as e:
-            # Unexpected errors
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unexpected error: {str(e)}"
-            )
+    try:
+        # Get Anthropic provider
+        provider = ProviderFactory.get_provider("anthropic")
+        
+        # Convert request to provider request
+        provider_request = ProviderRequest(
+            api_key=request.api_key,
+            model=request.model,
+            messages=request.messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+        )
+        
+        # Call provider
+        response = await provider.call(provider_request)
+        
+        # Log success
+        logger.info(f"Anthropic proxy request successful for model: {request.model}")
+        
+        # Return raw response
+        return response.raw_response
+        
+    except ValueError as e:
+        # Provider not supported
+        logger.error(f"Provider error in Anthropic proxy: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except HTTPException as e:
+        # Re-raise HTTP exceptions with logging
+        logger.error(f"HTTP error in Anthropic proxy: {e.status_code} - {e.detail}")
+        raise
+    except Exception as e:
+        # Unexpected errors
+        logger.exception(f"Unexpected error in Anthropic proxy: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 
 @router.post("/evaluate", response_model=EvaluationResponse)
@@ -253,9 +220,13 @@ async def evaluate_applicant(
     Raises:
         HTTPException: If the evaluation fails
     """
+    logger.info(f"Evaluation request received for provider: {request.provider}, model: {request.model}")
+    logger.debug(f"User: {current_user.username}, Template: {request.template_id}, Data length: {len(request.applicant_data)}")
+    
     try:
         # Get the template (custom or from library)
         template = request.custom_template if request.custom_template else get_template(request.template_id)
+        logger.debug(f"Using template: {template.id} - {template.name}")
         
         # Create variables for template substitution
         variables = PromptVariables(
@@ -267,44 +238,37 @@ async def evaluate_applicant(
         # Build the prompt
         config = PromptConfig(template=template, variables=variables)
         messages = build_prompt(request.applicant_data, config)
+        logger.debug(f"Built prompt with {len(messages)} messages")
         
         # Get the ranking keyword for score extraction
         ranking_keyword = variables.ranking_keyword or template.ranking_keyword
+        logger.debug(f"Using ranking keyword: {ranking_keyword}")
         
-        # Call the appropriate provider
-        if request.provider == "openai":
-            # Create OpenAI request
-            openai_request = OpenAIRequest(
-                api_key=request.api_key,
-                model=request.model,
-                messages=[Message(role=msg["role"], content=msg["content"]) for msg in messages],
-                max_tokens=500,
-                temperature=0.2  # Lower temperature for more consistent evaluations
-            )
-            
-            # Call OpenAI endpoint
-            response = await proxy_openai(openai_request, current_user)
-            result = response["choices"][0]["message"]["content"]
-            
-        elif request.provider == "anthropic":
-            # Create Anthropic request
-            anthropic_request = AnthropicRequest(
-                api_key=request.api_key,
-                model=request.model,
-                messages=[Message(role=msg["role"], content=msg["content"]) for msg in messages],
-                max_tokens=500,
-                temperature=0.2  # Lower temperature for more consistent evaluations
-            )
-            
-            # Call Anthropic endpoint
-            response = await proxy_anthropic(anthropic_request, current_user)
-            result = response["content"][0]["text"]
-            
-        else:
+        # Get provider
+        try:
+            provider = ProviderFactory.get_provider(request.provider)
+            logger.debug(f"Using provider: {provider.name}")
+        except ValueError as e:
+            logger.error(f"Invalid provider in evaluation request: {request.provider}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported provider: {request.provider}"
+                detail=str(e)
             )
+        
+        # Create provider request
+        provider_request = ProviderRequest(
+            api_key=request.api_key,
+            model=request.model,
+            messages=[Message(role=msg["role"], content=msg["content"]) for msg in messages],
+            max_tokens=500,
+            temperature=0.2  # Lower temperature for more consistent evaluations
+        )
+        
+        # Call provider
+        logger.info(f"Calling {provider.name} for evaluation")
+        response = await provider.call(provider_request)
+        result = response.content
+        logger.debug(f"Received response with {len(result)} characters")
         
         # Extract score from result
         score = None
@@ -315,9 +279,15 @@ async def evaluate_applicant(
                     score_part = line.split(f"{ranking_keyword} =")[1].strip()
                     # Extract the first number
                     score = int(''.join(filter(str.isdigit, score_part[:2])))
+                    logger.info(f"Extracted score: {score}")
                     break
-                except (IndexError, ValueError):
-                    pass
+                except (IndexError, ValueError) as e:
+                    logger.warning(f"Failed to extract score from line: '{line}', error: {str(e)}")
+        
+        if score is None:
+            logger.warning(f"Could not extract score from response. Ranking keyword '{ranking_keyword}' not found.")
+        
+        logger.info(f"Evaluation completed successfully with provider: {request.provider}, model: {request.model}")
         
         return EvaluationResponse(
             result=result,
@@ -326,11 +296,13 @@ async def evaluate_applicant(
             model=request.model
         )
         
-    except HTTPException:
-        # Re-raise HTTP exceptions
+    except HTTPException as e:
+        # Re-raise HTTP exceptions with logging
+        logger.error(f"HTTP error in evaluation: {e.status_code} - {e.detail}")
         raise
     except Exception as e:
         # Handle other exceptions
+        logger.exception(f"Evaluation failed with unexpected error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Evaluation failed: {str(e)}"
