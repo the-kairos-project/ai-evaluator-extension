@@ -25,6 +25,7 @@ from src.api.models import (
     PluginExecuteRequest, PluginExecuteResponse
 )
 from src.api.exception_handlers import register_exception_handlers
+from src.api.llm.proxy import router as llm_router
 
 # Configure logging
 structlog.configure(
@@ -160,6 +161,9 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+
+# Include routers
+app.include_router(llm_router, prefix=settings.api_prefix)
 
 
 # Health check endpoint

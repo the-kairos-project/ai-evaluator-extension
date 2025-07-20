@@ -19,6 +19,10 @@ services:
       - LINKEDIN_EXTERNAL_SERVER_URL=http://linkedin-mcp:8080  # URL to LinkedIn service
       - DOCKER_ENV=true  # Tell the app it's running in Docker
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}  # For testing Anthropic provider
+      - CORS_ORIGINS=["*"]  # Allow all origins for development
+      - CORS_METHODS=["*"]  # Allow all methods
+      - CORS_HEADERS=["*"]  # Allow all headers
+      - CORS_CREDENTIALS=true  # Allow credentials
     volumes:
       - ./src/plugins:/app/src/plugins  # Mount plugins for hot-reload
       - ./logs:/app/logs
