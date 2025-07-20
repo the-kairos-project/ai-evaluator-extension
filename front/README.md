@@ -1,3 +1,9 @@
+# AI Evaluator Extension
+
+> **Note:** This directory contains the frontend Airtable extension component of the Kairos project. For the main project documentation, please see the [main README](../README.md) in the root directory.
+
+---
+
 # ai-evaluator-extension ![deployment automatic](https://img.shields.io/badge/deployment-automatic-success)
 
 [Airtable extension](https://airtable.com/developers/extensions/guides/getting-started) for helping us evaluate applications to our courses using large language models (LLMs).

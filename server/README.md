@@ -1,3 +1,9 @@
+# MCP Server
+
+> **Note:** This directory contains the backend MCP server component of the Kairos project. For the main project documentation, please see the [main README](../README.md) in the root directory.
+
+---
+
 # MCP Server - Extensible Multi-Client Platform
 
 An intelligent, adaptive, and extensible Multi-Client Platform (MCP) Server that dynamically orchestrates specialized tools and plugins through semantic routing and agentic task planning.
