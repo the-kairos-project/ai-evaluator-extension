@@ -7,6 +7,9 @@ import {
   Input,
   Select,
   Switch,
+  Text,
+  Icon,
+  Tooltip,
 } from '@airtable/blocks/ui';
 import React, { useState, useEffect } from 'react';
 import {
@@ -28,9 +31,13 @@ import {
   getPromptSettings,
   savePromptSettings,
 } from '../../lib/prompts';
+import { clearTokenCache } from '../../lib/getChatCompletion/server';
 
 // Default server URL
 const DEFAULT_SERVER_URL = 'http://localhost:8000';
+
+// Authentication status types
+type AuthStatus = 'idle' | 'authenticating' | 'success' | 'error';
 
 // Convert the model providers to options for select dropdown
 const MODEL_PROVIDER_OPTIONS = MODEL_PROVIDERS.map((provider) => ({
@@ -81,6 +88,8 @@ export const SettingsDialog = ({
   const [useServerMode, setUseServerMode] = useState(false);
   const [serverUsername, setServerUsername] = useState('admin');
   const [serverPassword, setServerPassword] = useState('');
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Prompt settings state
   const [selectedTemplate, setSelectedTemplate] = useState(ACADEMIC_TEMPLATE.id);
@@ -176,6 +185,51 @@ export const SettingsDialog = ({
       onClose();
     } catch (error) {
       console.error('Error saving settings:', error);
+    }
+  };
+
+  // Handle authentication test
+  const handleAuthenticate = async () => {
+    // Save current server settings to global config temporarily
+    await globalConfig.setAsync('serverUrl', serverUrl);
+    await globalConfig.setAsync('serverUsername', serverUsername);
+    await globalConfig.setAsync('serverPassword', serverPassword);
+    
+    // Clear any existing token
+    clearTokenCache();
+    
+    // Set authenticating status
+    setAuthStatus('authenticating');
+    setAuthError(null);
+    
+    try {
+      // Try to get a token by making a direct authentication request
+      const response = await fetch(`${serverUrl}/api/v1/auth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          username: serverUsername,
+          password: serverPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+      }
+
+      // If we got here, authentication was successful
+      setAuthStatus('success');
+      
+      // After 3 seconds, reset to idle
+      setTimeout(() => {
+        setAuthStatus('idle');
+      }, 3000);
+    } catch (error) {
+      console.error('Authentication test failed:', error);
+      setAuthStatus('error');
+      setAuthError(error.message);
     }
   };
 
@@ -305,6 +359,45 @@ export const SettingsDialog = ({
                       Password for server authentication (default: admin123)
                     </div>
                   </FormField>
+                  
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between">
+                      <Button
+                        variant="primary"
+                        onClick={handleAuthenticate}
+                        disabled={authStatus === 'authenticating'}
+                        size="small"
+                      >
+                        {authStatus === 'authenticating' ? 'Authenticating...' : 'Test Connection'}
+                      </Button>
+                      
+                      <div className="flex items-center">
+                        {authStatus === 'success' && (
+                          <div className="flex items-center text-green-600">
+                            <Icon name="check" size={16} fillColor="green" />
+                            <Text textColor="green" marginLeft={1}>Connection successful</Text>
+                          </div>
+                        )}
+                        
+                        {authStatus === 'error' && (
+                          <div className="flex items-center text-red-600">
+                            <Icon name="x" size={16} fillColor="red" />
+                            <Tooltip
+                              content={authError || 'Authentication failed'}
+                              placementX={Tooltip.placements.CENTER}
+                              placementY={Tooltip.placements.BOTTOM}
+                            >
+                              <Text textColor="red" marginLeft={1} className="cursor-help">Connection failed</Text>
+                            </Tooltip>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-1 text-xs text-gray-500">
+                      Test your server connection and cache authentication token
+                    </div>
+                  </div>
                 </>
               )}
             </div>
