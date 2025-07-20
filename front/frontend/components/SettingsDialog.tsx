@@ -90,6 +90,7 @@ export const SettingsDialog = ({
   const [serverPassword, setServerPassword] = useState('');
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [connectionActive, setConnectionActive] = useState<boolean>(false);
 
   // Prompt settings state
   const [selectedTemplate, setSelectedTemplate] = useState(ACADEMIC_TEMPLATE.id);
@@ -148,7 +149,33 @@ export const SettingsDialog = ({
     // Load concurrency setting
     const storedConcurrency = getCurrentConcurrency();
     setApiConcurrency(storedConcurrency);
+    
+    // Check connection status if server mode is enabled
+    if (storedUseServerMode && storedServerUrl && storedServerUsername && storedServerPassword) {
+      checkConnectionStatus(storedServerUrl, storedServerUsername, storedServerPassword);
+    }
   }, []);
+  
+  // Function to check connection status
+  const checkConnectionStatus = async (url: string, username: string, password: string) => {
+    try {
+      const response = await fetch(`${url}/api/v1/auth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          username,
+          password,
+        }),
+      });
+      
+      setConnectionActive(response.ok);
+    } catch (error) {
+      console.error('Connection check failed:', error);
+      setConnectionActive(false);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -181,6 +208,13 @@ export const SettingsDialog = ({
         rankingKeyword,
         additionalInstructions,
       });
+      
+      // Check connection status if server mode is enabled
+      if (useServerMode && serverUrl && serverUsername && serverPassword) {
+        checkConnectionStatus(serverUrl, serverUsername, serverPassword);
+      } else {
+        setConnectionActive(false);
+      }
 
       onClose();
     } catch (error) {
@@ -216,11 +250,13 @@ export const SettingsDialog = ({
       });
 
       if (!response.ok) {
+        setConnectionActive(false);
         throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
       }
 
       // If we got here, authentication was successful
       setAuthStatus('success');
+      setConnectionActive(true);
       
       // After 3 seconds, reset to idle
       setTimeout(() => {
@@ -230,6 +266,7 @@ export const SettingsDialog = ({
       console.error('Authentication test failed:', error);
       setAuthStatus('error');
       setAuthError(error.message);
+      setConnectionActive(false);
     }
   };
 
@@ -316,12 +353,20 @@ export const SettingsDialog = ({
                     Route API calls through MCP server instead of calling APIs directly
                   </div>
                 </div>
-                <Switch
-                  value={useServerMode}
-                  onChange={setUseServerMode}
-                  width={44}
-                  backgroundColor={useServerMode ? '#3b82f6' : '#d1d5db'}
-                />
+                <div className="flex items-center">
+                  <Switch
+                    value={useServerMode}
+                    onChange={setUseServerMode}
+                    width={44}
+                    backgroundColor={useServerMode ? '#3b82f6' : '#d1d5db'}
+                  />
+                  {useServerMode && connectionActive && (
+                    <div className="ml-2 flex items-center">
+                      <Icon name="check" size={12} fillColor="green" />
+                      <Text size="small" textColor="green" marginLeft={1}>Connected</Text>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <FormField label="Server URL" className="mb-2">
