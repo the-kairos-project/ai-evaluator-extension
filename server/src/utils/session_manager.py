@@ -4,13 +4,13 @@ from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
 import json
 import uuid
-import structlog
+from src.utils.logging import get_structured_logger
 import redis.asyncio as redis
 from pydantic import BaseModel, Field
 
 from src.config.settings import settings
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class Session(BaseModel):

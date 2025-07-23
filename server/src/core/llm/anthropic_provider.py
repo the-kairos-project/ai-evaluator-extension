@@ -3,12 +3,13 @@ Anthropic (Claude) LLM Provider implementation.
 """
 
 from typing import List, Dict, Optional, Union
-import structlog
+from src.utils.logging import get_structured_logger
 from anthropic import AsyncAnthropic
 
 from .base import LLMProvider, LLMResponse, LLMMessage
+from src.utils.logging import get_structured_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class AnthropicProvider(LLMProvider):

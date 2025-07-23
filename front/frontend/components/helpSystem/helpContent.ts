@@ -146,17 +146,141 @@ export const HELP_CONTENT: Record<string, HelpContent> = {
       "Without this link, you won't know which evaluation belongs to which applicant",
   },
   logsField: {
-    purpose: 'Store detailed AI reasoning and decision process for transparency',
+    purpose: 'Store detailed AI evaluation logs for each applicant',
     setup:
-      "Optional: Choose a long text field to store the AI's complete thought process and reasoning.",
-    examples: ['AI Analysis', 'Evaluation Notes', 'Decision Logs'],
+      "Select a text field where the AI's detailed reasoning and analysis will be stored. Use a Long Text or Rich Text field.",
+    examples: ['Evaluation Notes', 'AI Analysis', 'Evaluation Logs'],
     bestPractices: [
-      'Use Long Text or Rich Text fields for adequate space',
-      'Helpful for understanding AI decisions and improving criteria',
-      'Useful for manual review and quality assurance',
-      'Can be disabled to save space if not needed',
+      'Use a Long Text or Rich Text field to accommodate detailed logs',
+      'Review logs to understand AI reasoning and improve your criteria',
+      'Logs help with troubleshooting and refining your evaluation process',
     ],
     consequences:
-      "Without logs, you won't see the AI's reasoning process. With logs, records will be larger but more transparent.",
+      'Without logs, you only see scores without explanation. Logs provide transparency but use more storage.',
   },
+  linkedinEnrichment: {
+    purpose: 'Enhance evaluations with LinkedIn profile data',
+    setup: 'Enable this option to include LinkedIn profile information in the evaluation process.',
+    examples: [
+      'Experience details from LinkedIn profiles',
+      'Skills listed on LinkedIn',
+      'Education history from LinkedIn'
+    ],
+    bestPractices: [
+      'Use this when professional experience is important for evaluation',
+      'Ensure LinkedIn URLs are correctly formatted (https://linkedin.com/in/username)',
+      'LinkedIn data complements application answers with professional background'
+    ],
+    consequences: 'Enabling this requires server mode and may increase evaluation time and costs.'
+  },
+  linkedinUrlField: {
+    purpose: 'Select the field containing LinkedIn profile URLs',
+    setup: 'Choose the field from your applicant table that contains LinkedIn profile URLs.',
+    examples: [
+      'LinkedIn Profile URL',
+      'Professional Profile',
+      'Social Media - LinkedIn'
+    ],
+    bestPractices: [
+      'Use a URL or Text field type',
+      'Ensure URLs are in the format https://linkedin.com/in/username',
+      'Verify URLs are accessible and public'
+    ],
+    consequences: 'If URLs are incorrect or profiles are private, enrichment may fail.'
+  },
+  linkedinDataField: {
+    purpose: 'Store structured LinkedIn profile data from enrichment',
+    setup: 'Choose a field where the structured LinkedIn profile data will be stored in JSON format.',
+    examples: [
+      'LinkedIn Data',
+      'LinkedIn Profile JSON',
+      'Professional Data'
+    ],
+    bestPractices: [
+      'Use a Long Text or Rich Text field type',
+      'This data can be used for further analysis or reporting',
+      'Separate from logs field which contains the full evaluation process'
+    ],
+    consequences: 'Without this field, LinkedIn data will only be available in the logs field.'
+  },
+  pdfResumeEnrichment: {
+    purpose: 'Enhance evaluations with PDF resume data',
+    setup: 'Enable this option to include resume information from PDF attachments in the evaluation process.',
+    examples: [
+      'Skills and experience from resumes',
+      'Education history from resumes',
+      'Professional certifications from resumes'
+    ],
+    bestPractices: [
+      'Use this when resume content is important for evaluation',
+      'Ensure PDF files are properly formatted and text-extractable',
+      'Resume data complements application answers with detailed professional background'
+    ],
+    consequences: 'Enabling this requires server mode and may increase evaluation time and costs.'
+  },
+  pdfResumeField: {
+    purpose: 'Select the field containing PDF resume attachments or URLs',
+    setup: 'Choose the field from your applicant table that contains PDF resume attachments or URLs.',
+    examples: [
+      'Resume Attachment',
+      'CV Upload',
+      'Resume URL'
+    ],
+    bestPractices: [
+      'Attachment fields are fully supported - select a field containing uploaded PDF files',
+      'URL fields can also be used if resumes are stored externally',
+      'Ensure PDFs are text-based (not scanned images) for best results',
+      'Keep file sizes reasonable for faster processing'
+    ],
+    consequences: 'If PDFs are not properly formatted or contain only images, text extraction may fail.'
+  },
+  pdfResumeDataField: {
+    purpose: 'Store structured resume data from PDF extraction',
+    setup: 'Choose a field where the extracted resume data will be stored in JSON format.',
+    examples: [
+      'Resume Data',
+      'CV Extracted Content',
+      'Resume JSON'
+    ],
+    bestPractices: [
+      'Use a Long Text or Rich Text field type',
+      'This data can be used for further analysis or reporting',
+      'Separate from logs field which contains the full evaluation process'
+    ],
+    consequences: 'Without this field, resume data will only be available in the logs field.'
+  },
+  multiAxisEvaluation: {
+    purpose: 'Evaluate candidates across multiple dimensions in a single pass',
+    setup: 'Enable this option to evaluate candidates on multiple criteria axes simultaneously (e.g., technical skills, experience, cultural fit).',
+    examples: [
+      'General Promise',
+      'ML Skills',
+      'Software Engineering Skills',
+      'Policy Experience',
+      'Understanding of AI Safety',
+      'Path to Impact',
+      'Research Experience'
+    ],
+    bestPractices: [
+      'Use when you need a comprehensive evaluation across multiple dimensions',
+      'Provides more detailed and nuanced candidate assessment',
+      'More efficient than running multiple separate evaluations'
+    ],
+    consequences: 'Enabling this requires server mode and will evaluate all axes in a single LLM call.'
+  },
+  multiAxisDataField: {
+    purpose: 'Store multi-axis evaluation results',
+    setup: 'Choose a field where the structured multi-dimensional evaluation results will be stored.',
+    examples: [
+      'Multi-Axis Scores',
+      'Comprehensive Evaluation',
+      'Detailed Assessment'
+    ],
+    bestPractices: [
+      'Use a Long Text or Rich Text field type',
+      'Results will include scores for each evaluation dimension',
+      'Separate from logs field which contains the full evaluation process'
+    ],
+    consequences: 'Without this field, multi-axis scores will only be available in the logs field.'
+  }
 };

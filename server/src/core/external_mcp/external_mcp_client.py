@@ -8,7 +8,7 @@ running in streamable-http mode, translating between our plugin interface and MC
 import asyncio
 from typing import Any, Dict, List, Optional
 import aiohttp
-import structlog
+from src.utils.logging import get_structured_logger
 
 from .external_mcp_models import MCPToolCall, MCPToolResponse
 from ..protocol.sse_parser import SSEParser, SSEParseError
@@ -37,7 +37,7 @@ from ..exceptions import (
     MCPTimeoutError,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class ExternalMCPClient:

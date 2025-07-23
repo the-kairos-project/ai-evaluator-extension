@@ -16,11 +16,12 @@ export interface PromptVariables {
   additionalInstructions?: string;
 }
 
-// Default template - extracted from existing proven prompt
-export const ACADEMIC_TEMPLATE: PromptTemplate = {
-  id: 'academic',
-  name: 'Academic Evaluation',
-  description: 'Current proven template for academic/course applications',
+// SPAR Single-Axis Template - derived from SPAR first axis (General Promise)
+// This is the default single-axis evaluation template when multi-axis is disabled
+export const SPAR_SINGLE_AXIS_TEMPLATE: PromptTemplate = {
+  id: 'spar_single',
+  name: 'General Promise Evaluation',
+  description: 'Single-axis evaluation using SPAR General Promise criteria',
   systemMessage: `Evaluate the application above, based on the following rubric: {criteriaString}
 
 You should ignore general statements or facts about the world, and focus on what the applicant themselves has achieved. You do not need to structure your assessment similar to the answers the user has given.
@@ -36,18 +37,22 @@ First explain your reasoning thinking step by step. Then output your final answe
   additionalInstructions: '',
 };
 
+// Legacy template alias for backward compatibility
+// @deprecated Use SPAR_SINGLE_AXIS_TEMPLATE instead
+export const ACADEMIC_TEMPLATE = SPAR_SINGLE_AXIS_TEMPLATE;
+
 // Default settings for new installations
 export const DEFAULT_PROMPT_SETTINGS = {
-  selectedTemplate: ACADEMIC_TEMPLATE.id,
+  selectedTemplate: SPAR_SINGLE_AXIS_TEMPLATE.id,
   customTemplate: null as PromptTemplate | null,
-  rankingKeyword: ACADEMIC_TEMPLATE.rankingKeyword,
+  rankingKeyword: SPAR_SINGLE_AXIS_TEMPLATE.rankingKeyword,
   additionalInstructions: '',
 };
 
-// Available templates (starting with just one)
-export const AVAILABLE_TEMPLATES: PromptTemplate[] = [ACADEMIC_TEMPLATE];
+// Available templates
+export const AVAILABLE_TEMPLATES: PromptTemplate[] = [SPAR_SINGLE_AXIS_TEMPLATE];
 
 // Get template by ID with fallback to default
 export const getTemplate = (templateId: string): PromptTemplate => {
-  return AVAILABLE_TEMPLATES.find((t) => t.id === templateId) || ACADEMIC_TEMPLATE;
+  return AVAILABLE_TEMPLATES.find((t) => t.id === templateId) || SPAR_SINGLE_AXIS_TEMPLATE;
 };

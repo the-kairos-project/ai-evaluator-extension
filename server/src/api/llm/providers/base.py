@@ -6,6 +6,7 @@ This module defines the base interface and common functionality for all LLM prov
 
 from abc import ABC, abstractmethod
 import logging
+import time
 from typing import Dict, Any, List, Optional
 
 import httpx
@@ -102,6 +103,36 @@ class BaseProvider(ABC):
         """
         pass
     
+    async def generate(self, payload: Dict[str, Any], api_key: str = None) -> Dict[str, Any]:
+        """Generate a completion using the provider API.
+        
+        Args:
+            payload: Request payload
+            api_key: Optional API key to override the default
+            
+        Returns:
+            Dict[str, Any]: Provider API response
+            
+        Raises:
+            HTTPException: If the request fails
+        """
+        # Create a ProviderRequest from the payload
+        request = ProviderRequest(
+            api_key=api_key or payload.get("api_key", ""),
+            model=payload.get("model", ""),
+            messages=[Message(role=m.get("role"), content=m.get("content")) 
+                     for m in payload.get("messages", [])],
+            max_tokens=payload.get("max_tokens"),
+            temperature=payload.get("temperature"),
+            top_p=payload.get("top_p")
+        )
+        
+        # Call the provider API
+        response = await self.call(request)
+        
+        # Return the raw response
+        return response.raw_response
+    
     async def call(self, request: ProviderRequest) -> ProviderResponse:
         """Call the provider API.
         
@@ -131,7 +162,7 @@ class BaseProvider(ABC):
                 masked_headers["x-api-key"] = "sk-...MASKED..."
             logger.debug(f"Request headers: {masked_headers}")
             
-            start_time = httpx.get_time()
+            start_time = time.time()
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -147,7 +178,7 @@ class BaseProvider(ABC):
                 response_data = response.json()
                 
                 # Calculate request duration
-                duration = httpx.get_time() - start_time
+                duration = time.time() - start_time
                 logger.info(f"{self.name} API call completed in {duration:.2f}s")
                 
                 # Extract content

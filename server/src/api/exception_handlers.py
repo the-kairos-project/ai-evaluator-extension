@@ -5,9 +5,9 @@ This module provides centralized exception handling for the API layer,
 converting custom exceptions to appropriate HTTP responses.
 """
 
-from fastapi import Request, HTTPException, status, FastAPI
+from fastapi import Request, status, FastAPI
 from fastapi.responses import JSONResponse
-import structlog
+from src.utils.logging import get_structured_logger
 
 from src.core.exceptions import (
     MCPException,
@@ -15,7 +15,7 @@ from src.core.exceptions import (
     PluginInitializationError,
     PluginExecutionError,
     PluginValidationError,
-    AuthenticationException,
+    PluginLoadError,
     InvalidCredentialsError,
     InactiveUserError,
     InsufficientPermissionsError,
@@ -33,7 +33,7 @@ from src.core.exceptions import (
     MultiStepExecutionError,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 async def mcp_exception_handler(request: Request, exc: MCPException) -> JSONResponse:
@@ -125,8 +125,70 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
+async def plugin_not_found_exception_handler(request: Request, exc: PluginNotFoundError) -> JSONResponse:
+    """Handle plugin not found exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def plugin_initialization_exception_handler(request: Request, exc: PluginInitializationError) -> JSONResponse:
+    """Handle plugin initialization exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def plugin_execution_exception_handler(request: Request, exc: PluginExecutionError) -> JSONResponse:
+    """Handle plugin execution exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def plugin_validation_exception_handler(request: Request, exc: PluginValidationError) -> JSONResponse:
+    """Handle plugin validation exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def plugin_load_exception_handler(request: Request, exc: PluginLoadError) -> JSONResponse:
+    """Handle plugin load exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def value_error_exception_handler(request: Request, exc: ValueError) -> JSONResponse:
+    """Handle value error exceptions."""
+    return await generic_exception_handler(request, exc)
+
+
+async def mcp_connection_exception_handler(request: Request, exc: MCPConnectionError) -> JSONResponse:
+    """Handle MCP connection exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def external_process_exception_handler(request: Request, exc: ExternalProcessError) -> JSONResponse:
+    """Handle external process exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def configuration_exception_handler(request: Request, exc: ConfigurationError) -> JSONResponse:
+    """Handle configuration exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
+async def validation_exception_handler(request: Request, exc: ValidationError) -> JSONResponse:
+    """Handle validation exceptions."""
+    return await mcp_exception_handler(request, exc)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register exception handlers with the FastAPI app."""
+    
+    # Register individual exception handlers
+    app.add_exception_handler(PluginNotFoundError, plugin_not_found_exception_handler)
+    app.add_exception_handler(PluginInitializationError, plugin_initialization_exception_handler)
+    app.add_exception_handler(PluginExecutionError, plugin_execution_exception_handler)
+    app.add_exception_handler(PluginValidationError, plugin_validation_exception_handler)
+    app.add_exception_handler(PluginLoadError, plugin_load_exception_handler)
+    app.add_exception_handler(ValueError, value_error_exception_handler)
+    app.add_exception_handler(MCPConnectionError, mcp_connection_exception_handler)
+    app.add_exception_handler(ExternalProcessError, external_process_exception_handler)
+    app.add_exception_handler(ConfigurationError, configuration_exception_handler)
+    app.add_exception_handler(ValidationError, validation_exception_handler)
     
     # Register handler for all MCP exceptions
     app.add_exception_handler(MCPException, mcp_exception_handler)

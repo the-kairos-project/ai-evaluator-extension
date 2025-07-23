@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 import uuid
-import structlog
+from src.utils.logging import get_structured_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class MCPMessage(BaseModel):

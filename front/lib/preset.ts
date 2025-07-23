@@ -16,6 +16,29 @@ export type Preset = {
   }[];
   evaluationApplicantField: string;
   evaluationLogsField?: string;
+  
+  // LinkedIn enrichment options
+  useLinkedinEnrichment?: boolean; // Whether to use LinkedIn enrichment
+  linkedinUrlField?: string; // Field ID containing LinkedIn URLs
+  linkedinDataField?: string; // Field ID to store LinkedIn data output
+  
+  // PDF resume enrichment options
+  usePdfResumeEnrichment?: boolean; // Whether to use PDF resume enrichment
+  pdfResumeField?: string; // Field ID containing PDF resume URLs or attachments
+  pdfResumeDataField?: string; // Field ID to store PDF resume data output
+  
+  // Multi-axis evaluation options
+  useMultiAxisEvaluation?: boolean; // Whether to use multi-axis evaluation
+  multiAxisDataField?: string; // Field ID to store multi-axis evaluation data
+  
+  // Individual axis output fields
+  generalPromiseField?: string; // Field ID to store General Promise axis score
+  mlSkillsField?: string; // Field ID to store ML Skills axis score
+  softwareEngineeringField?: string; // Field ID to store Software Engineering Skills axis score
+  policyExperienceField?: string; // Field ID to store Policy Experience axis score
+  aiSafetyUnderstandingField?: string; // Field ID to store Understanding of AI Safety axis score
+  pathToImpactField?: string; // Field ID to store Path to Impact axis score
+  researchExperienceField?: string; // Field ID to store Research Experience axis score
 };
 
 export const defaultPreset: Preset = {
@@ -29,6 +52,29 @@ export const defaultPreset: Preset = {
   evaluationFields: [],
   evaluationApplicantField: 'fldAVaTU0Btgt1i3p',
   evaluationLogsField: undefined,
+  
+  // LinkedIn enrichment options (disabled by default)
+  useLinkedinEnrichment: false,
+  linkedinUrlField: undefined,
+  linkedinDataField: undefined,
+  
+  // PDF resume enrichment options (disabled by default)
+  usePdfResumeEnrichment: false,
+  pdfResumeField: undefined,
+  pdfResumeDataField: undefined,
+  
+  // Multi-axis evaluation options (disabled by default)
+  useMultiAxisEvaluation: false,
+  multiAxisDataField: undefined,
+  
+  // Individual axis output fields (undefined by default)
+  generalPromiseField: undefined,
+  mlSkillsField: undefined,
+  softwareEngineeringField: undefined,
+  policyExperienceField: undefined,
+  aiSafetyUnderstandingField: undefined,
+  pathToImpactField: undefined,
+  researchExperienceField: undefined
 };
 
 export const upsertPreset = async (

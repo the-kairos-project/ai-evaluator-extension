@@ -61,8 +61,9 @@ class Settings(BaseSettings):
     redis_pool_size: int = Field(default=10, env="REDIS_POOL_SIZE")
     
     # Logging
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    log_level: str = Field(default="DEBUG", env="LOG_LEVEL")
     log_format: str = Field(default="json", env="LOG_FORMAT")
+    log_dir: str = Field(default="logs", env="LOG_DIR")
     
     # Monitoring
     prometheus_enabled: bool = Field(default=True, env="PROMETHEUS_ENABLED")
@@ -102,6 +103,11 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", env="ENVIRONMENT")
     debug: bool = Field(default=False, env="DEBUG")
     testing: bool = Field(default=False, env="TESTING")
+    
+    @property
+    def debug_mode(self) -> bool:
+        """Check if running in debug mode."""
+        return self.debug
     
     # CORS
     cors_origins: List[str] = Field(

@@ -3,12 +3,13 @@ OpenAI LLM Provider implementation.
 """
 
 from typing import List, Dict, Any, Optional, Union
-import structlog
+from src.utils.logging import get_structured_logger
 from openai import AsyncOpenAI
 
 from .base import LLMProvider, LLMResponse, LLMMessage
+from src.utils.logging import get_structured_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class OpenAIProvider(LLMProvider):

@@ -7,6 +7,7 @@ import pRetry from 'p-retry';
 import { type SetProgress, evaluateApplicants } from './evaluateApplicants';
 import { type FailedApplicant, removeFailedApplicants } from './failedApplicants';
 import type { Preset } from './preset';
+import { Logger } from './logger';
 
 /**
  * Retry failed applicants by fetching their records and re-processing
@@ -23,7 +24,7 @@ export const retryFailedApplicants = async (
     return { successes: 0, failures: 0, newFailures: [] };
   }
 
-  console.log(`🔄 Starting retry for ${failedApplicants.length} failed applicants`);
+  Logger.info(`🔄 Starting retry for ${failedApplicants.length} failed applicants`);
   setResult('Fetching failed applicant records for retry...');
 
   // Fetch actual records from Airtable using the stored record IDs
@@ -42,7 +43,7 @@ export const retryFailedApplicants = async (
       records.push(record);
     } else {
       notFoundIds.push(recordId);
-      console.warn(`⚠️ Record ${recordId} not found in table, may have been deleted`);
+      Logger.warn(`⚠️ Record ${recordId} not found in table, may have been deleted`);
     }
   }
 
@@ -101,14 +102,13 @@ export const retryFailedApplicants = async (
         await pRetry(() => evaluationTable.createRecordAsync(evaluation));
 
         const totalTime = Date.now() - startTime;
-        console.log(`✅ Successfully retried applicant ${record.id} in ${totalTime}ms`);
+        Logger.info(`✅ Successfully retried applicant ${record.id} in ${totalTime}ms`);
 
         return { success: true, recordId: record.id, totalTime };
       } catch (error) {
         const totalTime = Date.now() - startTime;
-        console.error(
-          `❌ Failed to retry applicant ${record.id} after ${totalTime}ms:`,
-          error
+        Logger.error(
+          `❌ Failed to retry applicant ${record.id} after ${totalTime}ms: ${error.message}`
         );
 
         return { success: false, recordId: record.id, error, totalTime };
@@ -149,7 +149,7 @@ export const retryFailedApplicants = async (
       };
     });
 
-  console.log(
+  Logger.info(
     `✅ Retry complete: ${successes} successes, ${failures} failures out of ${records.length} attempted`
   );
 

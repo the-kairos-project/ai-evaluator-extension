@@ -21,7 +21,7 @@ MCP_CLIENT_VERSION: Final[str] = "1.0.0"
 # Default Timeouts (in seconds)
 DEFAULT_REQUEST_TIMEOUT: Final[int] = 30
 DEFAULT_HEALTH_CHECK_TIMEOUT: Final[int] = 5
-DEFAULT_LINKEDIN_TIMEOUT: Final[int] = 300  # 5 minutes for LinkedIn operations
+DEFAULT_LINKEDIN_TIMEOUT: Final[int] = 180  # 3 minutes for LinkedIn operations
 DEFAULT_STARTUP_TIMEOUT: Final[int] = 30
 LINKEDIN_STARTUP_TIMEOUT: Final[int] = 60  # LinkedIn server needs more time
 

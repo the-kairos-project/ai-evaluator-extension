@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from '@airtable/blocks/ui';
 import React, { useState, useEffect } from 'react';
+import { Logger } from '../../lib/logger';
 import {
   CONCURRENCY_OPTIONS,
   DEFAULT_CONCURRENCY,
@@ -26,7 +27,7 @@ import {
   OPENAI_MODELS,
 } from '../../lib/models/config';
 import {
-  ACADEMIC_TEMPLATE,
+  SPAR_SINGLE_AXIS_TEMPLATE,
   AVAILABLE_TEMPLATES,
   getPromptSettings,
   savePromptSettings,
@@ -93,10 +94,10 @@ export const SettingsDialog = ({
   const [connectionActive, setConnectionActive] = useState<boolean>(false);
 
   // Prompt settings state
-  const [selectedTemplate, setSelectedTemplate] = useState(ACADEMIC_TEMPLATE.id);
+  const [selectedTemplate, setSelectedTemplate] = useState(SPAR_SINGLE_AXIS_TEMPLATE.id);
   const [customPrompt, setCustomPrompt] = useState('');
   const [rankingKeyword, setRankingKeyword] = useState(
-    ACADEMIC_TEMPLATE.rankingKeyword
+    SPAR_SINGLE_AXIS_TEMPLATE.rankingKeyword
   );
   const [additionalInstructions, setAdditionalInstructions] = useState('');
 
@@ -172,7 +173,7 @@ export const SettingsDialog = ({
       
       setConnectionActive(response.ok);
     } catch (error) {
-      console.error('Connection check failed:', error);
+      Logger.error('Connection check failed:', error);
       setConnectionActive(false);
     }
   };
@@ -218,7 +219,7 @@ export const SettingsDialog = ({
 
       onClose();
     } catch (error) {
-      console.error('Error saving settings:', error);
+      Logger.error('Error saving settings:', error);
     }
   };
 
@@ -263,7 +264,7 @@ export const SettingsDialog = ({
         setAuthStatus('idle');
       }, 3000);
     } catch (error) {
-      console.error('Authentication test failed:', error);
+      Logger.error('Authentication test failed:', error);
       setAuthStatus('error');
       setAuthError(error.message);
       setConnectionActive(false);
@@ -461,7 +462,7 @@ export const SettingsDialog = ({
                   if (value === 'custom') {
                     const template =
                       AVAILABLE_TEMPLATES.find((t) => t.id === selectedTemplate) ||
-                      ACADEMIC_TEMPLATE;
+                      SPAR_SINGLE_AXIS_TEMPLATE;
                     setCustomPrompt(template.systemMessage);
                   } else {
                     setSelectedTemplate(value as string);
@@ -472,7 +473,7 @@ export const SettingsDialog = ({
               <div className="mt-1 text-xs text-gray-500">
                 {customPrompt
                   ? 'Using custom template'
-                  : 'Using standard academic template'}
+                  : 'Using SPAR single-axis evaluation template'}
               </div>
             </FormField>
 
@@ -562,6 +563,8 @@ export const SettingsDialog = ({
                 rate limits.
               </div>
             </FormField>
+
+            {/* Log level is currently configured statically in Logger */}
           </div>
         </FormField>
       </div>

@@ -3,6 +3,7 @@ import { GetChatCompletion } from '..';
 import { getAnthropicApiKey, getAnthropicModelName, getOpenAiApiKey, getOpenAiModelName, getSelectedModelProvider } from '../apiKeyManager';
 import { getChatCompletionForProvider } from '..';
 import pRetry from 'p-retry';
+import { Logger } from '../../logger';
 
 // Maximum number of retries for server connection
 const MAX_RETRIES = 2;
@@ -55,10 +56,13 @@ export async function setServerMode(enabled: boolean): Promise<void> {
  */
 function isTokenValid(): boolean {
   if (!tokenCache) return false;
-  
-  // Add a 30-second buffer to ensure we don't use a token that's about to expire
+  // Add a 5-minute buffer to avoid using a token that's close to expiring
   const currentTime = Date.now();
-  return tokenCache.expiresAt > currentTime + 30000;
+  const isValid = tokenCache.expiresAt > currentTime + 5 * 60 * 1000;
+  if (!isValid) {
+    Logger.info('Auth token nearing expiry; refreshing');
+  }
+  return isValid;
 }
 
 /**
@@ -74,7 +78,7 @@ function parseJwt(token: string): { exp: number } | null {
 
     return JSON.parse(jsonPayload);
   } catch (error) {
-    console.error('Error parsing JWT token:', error);
+    Logger.error('Error parsing JWT token:', error);
     return null;
   }
 }
@@ -86,11 +90,11 @@ function parseJwt(token: string): { exp: number } | null {
 async function getAuthToken(): Promise<string> {
   // If we have a valid cached token, use it
   if (isTokenValid() && tokenCache) {
-    console.log('Using cached authentication token');
+    Logger.debug('Using cached authentication token');
     return tokenCache.token;
   }
   
-  console.log('Getting new authentication token');
+  Logger.info('Getting new authentication token');
   const { username, password } = getServerCredentials();
   const serverUrl = getServerUrl();
   
@@ -127,19 +131,19 @@ async function getAuthToken(): Promise<string> {
         token,
         expiresAt: parsedToken.exp * 1000, // Convert to milliseconds
       };
-      console.log(`Token cached, expires at ${new Date(tokenCache.expiresAt).toLocaleTimeString()}`);
+      Logger.info(`Token cached, expires at ${new Date(tokenCache.expiresAt).toLocaleTimeString()}`);
     } else {
       // If we can't parse the token, still cache it but with the expires_in from the response
       tokenCache = {
         token,
         expiresAt: Date.now() + (data.expires_in * 1000), // Convert seconds to milliseconds
       };
-      console.log(`Token cached with fallback expiration, expires at ${new Date(tokenCache.expiresAt).toLocaleTimeString()}`);
+      Logger.info(`Token cached with fallback expiration, expires at ${new Date(tokenCache.expiresAt).toLocaleTimeString()}`);
     }
     
     return token;
   } catch (error) {
-    console.error('Error authenticating with server:', error);
+    Logger.error('Error authenticating with server:', error);
     
     // Clear token cache on authentication error
     tokenCache = null;
@@ -158,7 +162,7 @@ async function getAuthToken(): Promise<string> {
  */
 export function clearTokenCache(): void {
   tokenCache = null;
-  console.log('Token cache cleared');
+  Logger.info('Token cache cleared');
 }
 
 /**
@@ -178,7 +182,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
     : getAnthropicModelName();
 
   // Log the request
-  console.log(`🌐 SERVER-ROUTED ${selectedProvider.toUpperCase()} API call via: ${serverUrl}/api/v1/llm/${selectedProvider}`);
+  Logger.info(`🌐 SERVER-ROUTED ${selectedProvider.toUpperCase()} API call via: ${serverUrl}/api/v1/llm/${selectedProvider}`);
 
   try {
     // Use p-retry for automatic retries
@@ -191,7 +195,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
         
-        console.log(`📤 Sending request to server: ${serverUrl}/api/v1/llm/${selectedProvider}`);
+        Logger.debug(`📤 Sending request to server: ${serverUrl}/api/v1/llm/${selectedProvider}`);
         
         // Make the request to the server
         const response = await fetch(`${serverUrl}/api/v1/llm/${selectedProvider}`, {
@@ -214,17 +218,17 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         if (!response.ok) {
           // If unauthorized, clear token cache and retry
           if (response.status === 401) {
-            console.log('🔄 Received 401 Unauthorized, clearing token cache and retrying');
+            Logger.warn('🔄 Received 401 Unauthorized, clearing token cache and retrying');
             clearTokenCache();
             throw new Error('Authentication token expired or invalid');
           }
           
           const errorText = await response.text();
-          console.error(`🚫 Server error: ${response.status} ${response.statusText}. ${errorText}`);
+          Logger.error(`🚫 Server error: ${response.status} ${response.statusText}. ${errorText}`);
           throw new Error(`Server returned error: ${response.status} ${response.statusText}. ${errorText}`);
         }
 
-        console.log('✅ Server response received successfully');
+        Logger.info('✅ Server response received successfully');
         const data = await response.json();
         
         // Extract the content from the response based on the provider
@@ -235,7 +239,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         }
       } catch (error) {
         if (error.name === 'AbortError') {
-          console.error('⏱️ Server request timed out');
+          Logger.error('⏱️ Server request timed out');
           throw new Error('Server request timed out');
         }
         throw error;
@@ -243,19 +247,19 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
     }, {
       retries: MAX_RETRIES,
       onFailedAttempt: (error) => {
-        console.warn(`🔄 Attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
+        Logger.warn(`🔄 Attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
       }
     });
   } catch (error) {
-    console.error(`❌ Error calling ${selectedProvider} API via server:`, error);
+    Logger.error(`❌ Error calling ${selectedProvider} API via server:`, error);
     
     // Show error popup with fallback option
     if (confirm(`Server connection failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
-      console.log('🔄 Switching to direct API mode');
+      Logger.info('🔄 Switching to direct API mode');
       await setServerMode(false);
       
       // Fallback to direct API call
-      console.log(`⚠️ Falling back to direct ${selectedProvider.toUpperCase()} API call`);
+      Logger.warn(`⚠️ Falling back to direct ${selectedProvider.toUpperCase()} API call`);
       return getChatCompletionForProvider(selectedProvider)(messages);
     }
     
@@ -269,10 +273,10 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
 export async function evaluateApplicantWithServer(
   applicantData: string,
   criteriaString: string,
-  templateId: string = 'academic',
-  rankingKeyword: string = 'FINAL_RANKING',
-  additionalInstructions: string = ''
-): Promise<{ result: string; score: number | null }> {
+  linkedinUrl?: string, // Optional LinkedIn URL parameter
+  pdfResumeUrl?: string, // Optional PDF resume URL parameter
+  useMultiAxis: boolean = false // Optional flag for multi-axis evaluation
+): Promise<{ result: string; score: number | null; scores?: Array<{ name: string, score: number | null }> }> {
   const selectedProvider = getSelectedModelProvider();
   const serverUrl = getServerUrl();
   
@@ -286,8 +290,23 @@ export async function evaluateApplicantWithServer(
     : getAnthropicModelName();
 
   // Log the request
-  console.log(`🌐 SERVER-ROUTED EVALUATION via: ${serverUrl}/api/v1/llm/evaluate`);
-  console.log(`📋 Evaluation details: Provider=${selectedProvider}, Model=${model}, Template=${templateId}`);
+  Logger.info(`🌐 SERVER-ROUTED EVALUATION via: ${serverUrl}/api/v1/llm/evaluate`);
+  Logger.debug(
+    `📋 Evaluation details: Provider=${selectedProvider}, Model=${model}, Mode=${useMultiAxis ? 'multi-axis' : 'single-axis(SPAR-first-axis)'}
+    `
+  );
+  
+  // Log if LinkedIn enrichment is enabled
+  if (linkedinUrl) {
+    Logger.debug(`🔍 LinkedIn enrichment enabled with URL: ${linkedinUrl}`);
+    Logger.debug(`🔍 LinkedIn URL format check: ${linkedinUrl.includes('linkedin.com') ? 'Valid LinkedIn domain' : 'Missing linkedin.com domain'}`);
+    Logger.debug(`🔍 LinkedIn URL structure: ${linkedinUrl.includes('/in/') ? 'Contains /in/ path' : 'Missing /in/ path'}`);
+  }
+  
+          // Log if PDF resume enrichment is enabled
+  if (pdfResumeUrl) {
+    Logger.debug(`📄 PDF resume enrichment enabled with URL: ${pdfResumeUrl}`);
+  }
 
   try {
     // Use p-retry for automatic retries
@@ -300,7 +319,62 @@ export async function evaluateApplicantWithServer(
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
         
-        console.log(`📤 Sending evaluation request to server: ${serverUrl}/api/v1/llm/evaluate`);
+        Logger.debug(`📤 Sending evaluation request to server: ${serverUrl}/api/v1/llm/evaluate`);
+        
+        // Determine which URLs to use for enrichment
+        let usePlugin = false;
+        let sourceUrl: string | undefined = undefined;
+        let pdfUrl: string | undefined = undefined;
+        
+        // Set up plugin usage and URLs
+        if (linkedinUrl) {
+          usePlugin = true;
+          sourceUrl = linkedinUrl;
+        }
+        
+        if (pdfResumeUrl) {
+          usePlugin = true;
+          // If we already have LinkedIn URL, set PDF as separate parameter
+          if (linkedinUrl) {
+            pdfUrl = pdfResumeUrl;
+          } else {
+            // Otherwise use it as the main source URL
+            sourceUrl = pdfResumeUrl;
+          }
+        }
+        
+        // Create request payload (send only what the server actually needs)
+        const requestPayload: Record<string, unknown> = {
+          api_key: apiKey,
+          provider: selectedProvider,
+          model: model,
+          applicant_data: applicantData,
+          criteria_string: criteriaString,
+        };
+
+        // Multi-axis flag (server defaults behavior if omitted)
+        if (useMultiAxis) {
+          requestPayload.use_multi_axis = true;
+        }
+
+        // Plugin payload only when enrichment is requested
+        if (usePlugin) {
+          requestPayload.use_plugin = true;
+          if (sourceUrl) requestPayload.source_url = sourceUrl;
+          if (pdfUrl) requestPayload.pdf_url = pdfUrl;
+        }
+
+        // Only include template fields when explicitly needed in future; for now, omit
+        // single-axis defaults to SPAR-first-axis on the server, multi-axis uses SPAR too
+        
+        // Log the request payload for debugging (excluding API key)
+        Logger.debug(
+          `📦 Request payload: ${JSON.stringify(
+            { ...requestPayload, api_key: '[REDACTED]' },
+            null,
+            2
+          )}`
+        );
         
         // Make the request to the server's evaluate endpoint
         const response = await fetch(`${serverUrl}/api/v1/llm/evaluate`, {
@@ -309,16 +383,7 @@ export async function evaluateApplicantWithServer(
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            api_key: apiKey,
-            provider: selectedProvider,
-            model: model,
-            applicant_data: applicantData,
-            criteria_string: criteriaString,
-            template_id: templateId,
-            ranking_keyword: rankingKeyword,
-            additional_instructions: additionalInstructions,
-          }),
+          body: JSON.stringify(requestPayload),
           signal: controller.signal,
         });
         
@@ -328,27 +393,73 @@ export async function evaluateApplicantWithServer(
         if (!response.ok) {
           // If unauthorized, clear token cache and retry
           if (response.status === 401) {
-            console.log('🔄 Received 401 Unauthorized, clearing token cache and retrying');
+            Logger.warn('🔄 Received 401 Unauthorized, clearing token cache and retrying');
             clearTokenCache();
             throw new Error('Authentication token expired or invalid');
           }
           
           const errorText = await response.text();
-          console.error(`🚫 Server evaluation error: ${response.status} ${response.statusText}. ${errorText}`);
+          Logger.error(`🚫 Server evaluation error: ${response.status} ${response.statusText}. ${errorText}`);
           throw new Error(`Server returned error: ${response.status} ${response.statusText}. ${errorText}`);
         }
 
-        console.log('✅ Server evaluation response received successfully');
+        Logger.info('✅ Server evaluation response received successfully');
         const data = await response.json();
-        console.log(`📊 Evaluation result: Score=${data.score !== null ? data.score : 'NULL'}`);
+        Logger.info(`📊 Evaluation result: Score=${data.score !== null ? data.score : 'NULL'}`);
+        
+        // Log multi-axis scores if present
+        if (data.scores && Array.isArray(data.scores)) {
+          Logger.info('📊 Multi-axis evaluation scores:');
+          data.scores.forEach(axisScore => {
+            Logger.info(`  - ${axisScore.name}: ${axisScore.score !== null ? axisScore.score : 'NULL'}`);
+          });
+        }
+        
+        // Extract LinkedIn data if present
+        const linkedinDataMatch = data.result.match(/\[LINKEDIN_DATA\]([\s\S]*?)\[END_LINKEDIN_DATA\]/);
+        if (linkedinDataMatch && linkedinDataMatch[1]) {
+          Logger.info('📋 LinkedIn data found in response:');
+          try {
+            const linkedinData = JSON.parse(linkedinDataMatch[1]);
+            Logger.debug('🔍 LinkedIn profile data:', linkedinData);
+          } catch (e) {
+            Logger.debug('📝 LinkedIn data (raw):', linkedinDataMatch[1]);
+          }
+        } else {
+          Logger.warn('⚠️ No LinkedIn data found in response');
+        }
+        
+        // Extract PDF resume data if present
+        const pdfResumeDataMatch = data.result.match(/\[PDF_RESUME_DATA\]([\s\S]*?)\[END_PDF_RESUME_DATA\]/);
+        if (pdfResumeDataMatch && pdfResumeDataMatch[1]) {
+          Logger.info('📄 PDF resume data found in response:');
+          try {
+            const pdfResumeData = JSON.parse(pdfResumeDataMatch[1]);
+            Logger.debug('🔍 PDF resume data:', pdfResumeData);
+          } catch (e) {
+            Logger.debug('📝 PDF resume data (raw):', pdfResumeDataMatch[1]);
+          }
+        } else {
+          Logger.warn('⚠️ No PDF resume data found in response');
+        }
+        
+        // Extract enrichment logs if present
+        const enrichmentLogMatch = data.result.match(/\[ENRICHMENT LOG\]([\s\S]*?)\[END ENRICHMENT LOG\]/);
+        if (enrichmentLogMatch && enrichmentLogMatch[1]) {
+          Logger.info('📋 Enrichment logs:');
+          Logger.debug(enrichmentLogMatch[1]);
+        } else {
+          Logger.warn('⚠️ No enrichment logs found in response');
+        }
         
         return {
           result: data.result,
-          score: data.score
+          score: data.score,
+          scores: data.scores
         };
       } catch (error) {
         if (error.name === 'AbortError') {
-          console.error('⏱️ Server evaluation request timed out');
+          Logger.error('⏱️ Server evaluation request timed out');
           throw new Error('Server request timed out');
         }
         throw error;
@@ -356,19 +467,19 @@ export async function evaluateApplicantWithServer(
     }, {
       retries: MAX_RETRIES,
       onFailedAttempt: (error) => {
-        console.warn(`🔄 Evaluation attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
+        Logger.warn(`🔄 Evaluation attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
       }
     });
   } catch (error) {
-    console.error(`❌ Error calling evaluation API via server:`, error);
+    Logger.error(`❌ Error calling evaluation API via server:`, error);
     
     // Show error popup with fallback option
     if (confirm(`Server evaluation failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
-      console.log('🔄 Switching to direct API mode');
+      Logger.info('🔄 Switching to direct API mode');
       await setServerMode(false);
       
       // Return null to indicate fallback needed (handled by caller)
-      console.log(`⚠️ Returning null score to trigger fallback to direct mode`);
+      Logger.warn(`⚠️ Returning null score to trigger fallback to direct mode`);
       return { result: '', score: null };
     }
     

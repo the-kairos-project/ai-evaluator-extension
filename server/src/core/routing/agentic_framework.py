@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime
 import json
-import structlog
+from src.utils.logging import get_structured_logger
 from langchain.prompts import ChatPromptTemplate
 
 from src.core.routing.semantic_router import SemanticRouter, MultiStepPlan, RoutingDecision
@@ -16,7 +16,7 @@ from src.core.plugin_system.plugin_interface import PluginResponse
 from src.core.llm import LLMProviderFactory, LLMProvider, LLMMessage, MessageRole
 from src.config.settings import settings
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class TaskGoal(BaseModel):

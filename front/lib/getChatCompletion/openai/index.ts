@@ -2,6 +2,7 @@ import pLimit from 'p-limit';
 import type { GetChatCompletion } from '..';
 import { getCurrentConcurrency } from '../../concurrency/config';
 import { openAiApiKey, openAiModel, openAiOrganisation } from './config';
+import { Logger } from '../../logger';
 
 // Create rate limiter with dynamic concurrency
 let globalRateLimit = pLimit(getCurrentConcurrency());
@@ -13,9 +14,7 @@ const updateRateLimit = () => {
   if (currentConcurrency !== lastConcurrency) {
     globalRateLimit = pLimit(currentConcurrency);
     lastConcurrency = currentConcurrency;
-    console.log(
-      `🔄 Updated OpenAI rate limit to ${currentConcurrency} concurrent calls`
-    );
+    Logger.info(`🔄 Updated OpenAI rate limit to ${currentConcurrency} concurrent calls`);
   }
   return globalRateLimit;
 };
@@ -24,7 +23,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
   return updateRateLimit()(async () => {
     try {
       const apiUrl = 'https://api.openai.com/v1/chat/completions';
-      console.log(`🌐 DIRECT OpenAI API call to: ${apiUrl} (no proxy)`);
+      Logger.info(`🌐 DIRECT OpenAI API call to: ${apiUrl} (no proxy)`);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -46,15 +45,11 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
       const resetTime = response.headers.get('x-ratelimit-reset-requests');
 
       if (remainingRequests && Number.parseInt(remainingRequests) < 10) {
-        console.warn(
-          `🚨 OpenAI API: Only ${remainingRequests} requests remaining until ${resetTime}`
-        );
+        Logger.warn(`🚨 OpenAI API: Only ${remainingRequests} requests remaining until ${resetTime}`);
       }
 
       if (remainingTokens && Number.parseInt(remainingTokens) < 1000) {
-        console.warn(
-          `🚨 OpenAI API: Only ${remainingTokens} tokens remaining until ${resetTime}`
-        );
+        Logger.warn(`🚨 OpenAI API: Only ${remainingTokens} tokens remaining until ${resetTime}`);
       }
 
       if (!response.ok || response.status >= 400) {

@@ -1,38 +1,38 @@
-"""Main FastAPI application."""
+"""
+Main FastAPI application entry point.
 
-import logging
-from fastapi import FastAPI, Request, status
+This module initializes the FastAPI application, includes all routers,
+sets up middleware, and starts the server.
+"""
+
+import os
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.routing import APIRouter
 
 from src.api.auth import router as auth_router
-from src.api.llm import router as llm_router
+from src.api.llm.proxy.router import router as llm_router
+from src.api.exception_handlers import register_exception_handlers
 from src.config.settings import settings
-from src.utils.logging import setup_app_logging
-from src.api.exception_handlers import (
-    register_exception_handlers,
-)
 
-# Create logger
-logger = logging.getLogger(__name__)
+# Configure logging using our centralized logging module
+from src.utils.logging import configure_logging, get_logger
+
+# Ensure log directory exists
+os.makedirs(settings.log_dir, exist_ok=True)
+
+configure_logging(settings.log_level)
+logger = get_logger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="MCP Server",
-    description="MCP Server for AI evaluations and plugin integration",
-    version="0.1.0",
-    docs_url="/docs" if settings.show_docs else None,
-    redoc_url="/redoc" if settings.show_docs else None,
+    title="MCP Server API",
+    description="Multi-Client Platform Server API",
+    version="1.0.0",
+    docs_url="/docs" if settings.debug_mode else None,
+    redoc_url="/redoc" if settings.debug_mode else None
 )
 
-# Set up logging
-setup_app_logging(app, {"log_level": settings.log_level})
-
-# Register exception handlers
-register_exception_handlers(app)
-
-# Configure CORS
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -41,35 +41,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create API router
-api_router = APIRouter(prefix="/api/v1")
+# Include routers
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(llm_router, prefix="/api/v1")
 
-# Register routers
-api_router.include_router(auth_router)
-api_router.include_router(llm_router)
+# Register exception handlers
+register_exception_handlers(app)
 
-# Include API router
-app.include_router(api_router)
 
-# Health check endpoint
-@app.get("/health", status_code=status.HTTP_200_OK)
-async def health_check():
+@app.get("/", include_in_schema=False)
+async def root():
+    """Root endpoint."""
+    return {"message": "MCP Server API"}
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
     """Health check endpoint."""
-    logger.debug("Health check requested")
     return {"status": "ok"}
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run startup tasks."""
-    logger.info("Starting MCP Server")
-    logger.info(f"Environment: {settings.environment}")
-    logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"CORS origins: {settings.cors_origins}")
-    logger.info(f"API docs: {settings.show_docs}")
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests."""
+    logger.info(f"Request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Run shutdown tasks."""
-    logger.info("Shutting down MCP Server") 
+if __name__ == "__main__":
+    import uvicorn
+    
+    logger.info(f"Starting MCP Server API on {settings.api_host}:{settings.api_port}")
+    uvicorn.run(
+        "src.api.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.debug_mode
+    )

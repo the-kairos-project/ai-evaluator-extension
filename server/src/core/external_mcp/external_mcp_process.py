@@ -10,7 +10,7 @@ import subprocess
 import time
 from typing import List, Optional
 from pathlib import Path
-import structlog
+from src.utils.logging import get_structured_logger
 
 from .external_mcp_client import ExternalMCPClient
 from src.core.protocol.mcp_constants import (
@@ -19,7 +19,7 @@ from src.core.protocol.mcp_constants import (
     DEFAULT_STARTUP_TIMEOUT,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class ExternalMCPProcess:

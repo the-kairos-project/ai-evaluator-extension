@@ -1,11 +1,11 @@
 """Echo plugin for testing and demonstration."""
 
 from typing import Any, Dict, Optional
-import structlog
+from src.utils.logging import get_structured_logger
 
 from src.core.plugin_system.plugin_interface import Plugin, PluginMetadata, PluginRequest, PluginResponse
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class EchoPlugin(Plugin):

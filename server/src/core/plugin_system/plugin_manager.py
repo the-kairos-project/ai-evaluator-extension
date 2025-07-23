@@ -7,11 +7,10 @@ of plugins in the MCP Server.
 import importlib
 import importlib.util
 import inspect
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Type, Any
-import structlog
+from src.utils.logging import get_structured_logger
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
@@ -21,10 +20,11 @@ from ..exceptions import (
     PluginInitializationError,
     PluginExecutionError,
     PluginValidationError,
+    PluginLoadError,
 )
 
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class PluginFileHandler(FileSystemEventHandler):
@@ -123,8 +123,45 @@ class PluginManager:
         init_file = self.plugin_directory / "__init__.py"
         if not init_file.exists():
             init_file.touch()
-        
-        # Scan for plugin files
+            
+        # Import plugins from the __init__.py file (standard Python behavior)
+        try:
+            logger.info("Importing plugins from __init__.py")
+            import src.plugins as plugins_module
+            
+            # Look for plugin classes in the module
+            for name in dir(plugins_module):
+                obj = getattr(plugins_module, name)
+                
+                # Check if it's a plugin class
+                if (inspect.isclass(obj) and 
+                    issubclass(obj, Plugin) and 
+                    obj is not Plugin):
+                    
+                    # Try to get metadata
+                    try:
+                        # Instantiate to get metadata
+                        temp_instance = obj()
+                        metadata = temp_instance.get_metadata()
+                        plugin_name = metadata.name
+                        
+                        # Register plugin
+                        self.available_plugins[plugin_name] = obj
+                        logger.info(
+                            "Discovered plugin from __init__",
+                            name=plugin_name,
+                            class_name=obj.__name__
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "Failed to get plugin metadata from __init__",
+                            class_name=name,
+                            error=str(e)
+                        )
+        except Exception as e:
+            logger.error("Failed to import plugins from __init__", error=str(e))
+            
+        # Next, scan for plugin files in main directory
         for file_path in self.plugin_directory.glob("*_plugin.py"):
             if file_path.name.startswith("_"):
                 continue
@@ -137,20 +174,74 @@ class PluginManager:
                     file=str(file_path),
                     error=str(e)
                 )
+                
+        # Also check subdirectories for plugin.py files
+        for file_path in self.plugin_directory.glob("*/plugin.py"):
+            if file_path.parent.name.startswith("_"):
+                continue
+                
+            try:
+                # For subdirectory plugins, use the directory name as the module name
+                dir_name = file_path.parent.name
+                module_path = f"src.plugins.{dir_name}.plugin"
+                logger.info(f"Loading plugin from subdirectory: {file_path} as {module_path}")
+                
+                # Use the directory name for the module override
+                self._load_plugin_module(file_path, module_name_override=module_path)
+            except Exception as e:
+                logger.error(
+                    "Failed to load plugin module from subdirectory",
+                    file=str(file_path),
+                    error=str(e),
+                    exc_info=True
+                )
+                
+        # Log discovered plugins
+        logger.info(
+            "Plugin discovery completed",
+            total_plugins=len(self.available_plugins),
+            available_plugins=list(self.available_plugins.keys())
+        )
     
-    def _load_plugin_module(self, file_path: Path) -> None:
+    def _load_plugin_module(self, file_path: Path, module_name_override: str = None) -> None:
         """Load a plugin module and register its Plugin classes.
         
         Args:
             file_path: Path to the plugin Python file
+            module_name_override: Optional override for module name (used for subdirectories)
         """
-        module_name = file_path.stem
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module_name = module_name_override if module_name_override else file_path.stem
+        logger.debug(f"Loading plugin module: {module_name} from {file_path}")
         
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+        # First try if the module is already importable (e.g., from __init__.py)
+        if "." in module_name:
+            try:
+                logger.debug(f"Trying to import {module_name} directly")
+                module = importlib.import_module(module_name)
+                logger.info(f"Successfully imported {module_name} directly")
+            except ImportError as e:
+                # If direct import fails, try spec-based loading
+                logger.debug(f"Direct import failed, trying spec-based loading: {str(e)}")
+                spec = importlib.util.spec_from_file_location(module_name, file_path)
+                
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+                else:
+                    logger.error(f"Failed to get spec for {module_name} from {file_path}")
+                    return
+        else:
+            # For simple module names, use spec-based loading
+            spec = importlib.util.spec_from_file_location(module_name, file_path)
+            
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+            else:
+                logger.error(f"Failed to get spec for {module_name} from {file_path}")
+                return
             
             # Find Plugin subclasses in the module
             for name, obj in inspect.getmembers(module):
@@ -179,56 +270,65 @@ class PluginManager:
                             error=str(e)
                         )
     
-    async def load_plugin(
-        self,
-        plugin_name: str,
-        config: Optional[Dict[str, Any]] = None
-    ) -> Plugin:
-        """Load and initialize a specific plugin.
+    async def load_plugin(self, plugin_name: str, config: Optional[Dict[str, Any]] = None) -> Plugin:
+        """Load a plugin by name.
         
         Args:
             plugin_name: Name of the plugin to load
             config: Optional configuration for the plugin
             
         Returns:
-            The loaded and initialized plugin instance
+            The loaded plugin instance
             
         Raises:
-            PluginNotFoundError: If plugin class not found
-            PluginInitializationError: If plugin initialization fails
+            PluginNotFoundError: If plugin not found
+            PluginLoadError: If plugin loading fails
         """
-        # Avoid duplicate loading which could cause state conflicts
+        # Check if the plugin is already loaded
         if plugin_name in self.loaded_plugins:
-            return
+            logger.info(f"Plugin '{plugin_name}' already loaded")
+            return self.loaded_plugins[plugin_name]
         
-        # Lazy loading: instantiate only when first accessed for efficiency
-        if plugin_name not in self.available_plugins:
+        # Check if plugin is in available plugins
+        if plugin_name in self.available_plugins:
+            logger.info(f"Loading plugin from available plugins: {plugin_name}")
+            # Get the plugin class directly from available_plugins
+            plugin_class = self.available_plugins[plugin_name]
+        else:
+            # Detailed logging of what's available
+            logger.error(f"Plugin '{plugin_name}' not found in available plugins")
+            logger.info(f"Available plugins: {list(self.available_plugins.keys())}")
             raise PluginNotFoundError(plugin_name)
-            
-        plugin_class = self.available_plugins[plugin_name]
-            
+        
+        logger.info(f"Loading plugin: {plugin_name}")
+        
         try:
+            # Use the plugin class we already have
+            logger.info(f"Found plugin class: {plugin_class.__name__}")
+            
+            # Create an instance of the plugin
             plugin = plugin_class()
+            logger.info(f"Created plugin instance: {plugin_class.__name__}")
             
-            await plugin.initialize(config)
+            # Initialize the plugin
+            try:
+                await plugin.initialize(config)
+                logger.info(f"Plugin '{plugin_name}' initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize plugin '{plugin_name}': {str(e)}", exc_info=True)
+                raise PluginInitializationError(plugin_name, str(e))
             
+            # Store the plugin instance
             self.loaded_plugins[plugin_name] = plugin
-            
-            logger.info(
-                "Plugin loaded successfully",
-                plugin=plugin_name,
-                metadata=plugin.get_metadata().dict()
-            )
+            logger.info(f"Plugin '{plugin_name}' loaded successfully")
             
             return plugin
             
         except Exception as e:
-            logger.error(
-                "Failed to load plugin",
-                plugin=plugin_name,
-                error=str(e)
-            )
-            raise PluginInitializationError(plugin_name, str(e), e)
+            if not isinstance(e, (PluginNotFoundError, PluginLoadError, PluginInitializationError)):
+                logger.error(f"Unexpected error loading plugin '{plugin_name}': {str(e)}", exc_info=True)
+                raise PluginLoadError(plugin_name, str(e))
+            raise
     
     async def unload_plugin(self, plugin_name: str) -> None:
         """Unload a specific plugin.

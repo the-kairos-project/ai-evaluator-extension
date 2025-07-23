@@ -1,1 +1,1 @@
-"""Utility components of the MCP Server.""" 
+"""Utility functions and helpers for the MCP Server."""

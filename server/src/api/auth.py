@@ -4,14 +4,18 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
-import structlog
+import logging
 
 from src.config.settings import settings
+from src.utils.logging import get_structured_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
+
+# Create router - needed for FastAPI to recognize the authentication endpoints
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -255,6 +259,50 @@ class SecurityScopes:
 require_admin = SecurityScopes(["admin"])
 require_write = SecurityScopes(["write"])
 require_read = SecurityScopes(["read"])
+
+
+@router.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
+    """Get an access token using username and password.
+    
+    This is the only endpoint we actually need for the authentication flow.
+    The client will use this endpoint to get a token, and then use that token
+    for all subsequent requests.
+    
+    Args:
+        form_data: OAuth2 password request form
+        
+    Returns:
+        Token: Access token
+        
+    Raises:
+        HTTPException: If authentication fails
+    """
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if user.disabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+    
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": user.username, "scopes": user.scopes},
+        expires_delta=access_token_expires
+    )
+    
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=settings.access_token_expire_minutes * 60
+    )
 
 
 def create_user(user_create: UserCreate) -> User:

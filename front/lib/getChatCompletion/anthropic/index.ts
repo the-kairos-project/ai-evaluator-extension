@@ -2,6 +2,7 @@ import pLimit from 'p-limit';
 import type { GetChatCompletion } from '..';
 import { getCurrentConcurrency } from '../../concurrency/config';
 import { anthropicApiKey, anthropicModel } from './config';
+import { Logger } from '../../logger';
 
 // Create rate limiter with dynamic concurrency
 let globalRateLimit = pLimit(getCurrentConcurrency());
@@ -13,9 +14,7 @@ const updateRateLimit = () => {
   if (currentConcurrency !== lastConcurrency) {
     globalRateLimit = pLimit(currentConcurrency);
     lastConcurrency = currentConcurrency;
-    console.log(
-      `🔄 Updated Anthropic rate limit to ${currentConcurrency} concurrent calls`
-    );
+    Logger.info(`🔄 Updated Anthropic rate limit to ${currentConcurrency} concurrent calls`);
   }
   return globalRateLimit;
 };
@@ -31,15 +30,11 @@ const checkRateLimitHeaders = (response: Response): void => {
   const resetTime = response.headers.get('anthropic-ratelimit-requests-reset');
 
   if (remainingRequests && Number.parseInt(remainingRequests) < 10) {
-    console.warn(
-      `🚨 Anthropic API: Only ${remainingRequests} requests remaining until ${resetTime}`
-    );
+    Logger.warn(`🚨 Anthropic API: Only ${remainingRequests} requests remaining until ${resetTime}`);
   }
 
   if (remainingTokens && Number.parseInt(remainingTokens) < 1000) {
-    console.warn(
-      `🚨 Anthropic API: Only ${remainingTokens} tokens remaining until ${resetTime}`
-    );
+    Logger.warn(`🚨 Anthropic API: Only ${remainingTokens} tokens remaining until ${resetTime}`);
   }
 };
 
@@ -78,7 +73,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
   return updateRateLimit()(async () => {
     try {
       const apiUrl = 'https://api.anthropic.com/v1/messages';
-      console.log(`🌐 DIRECT Anthropic API call to: ${apiUrl}`);
+      Logger.info(`🌐 DIRECT Anthropic API call to: ${apiUrl}`);
 
       const response = await fetch(apiUrl, {
         method: 'POST',

@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import json
 from pydantic import BaseModel, Field
-import structlog
+from src.utils.logging import get_structured_logger
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser, OutputFixingParser
 
@@ -19,7 +19,7 @@ from src.core.llm import LLMProviderFactory, LLMProvider, LLMMessage, MessageRol
 from src.core.exceptions import RoutingDecisionError, MultiStepExecutionError, NoPluginsAvailableError
 from src.config.settings import settings
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class RoutingDecision(BaseModel):

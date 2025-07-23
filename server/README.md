@@ -15,6 +15,7 @@ An intelligent, adaptive, and extensible Multi-Client Platform (MCP) Server that
 - **Dynamic Plugin System**: Hot-reloadable plugins with automatic discovery
 - **RESTful API**: FastAPI-based with OAuth2 JWT authentication
 - **External Integrations**: Support for external MCP servers (LinkedIn, etc.)
+- **PDF Resume Parser**: Extract structured data from PDF resumes
 
 ## 📋 Architecture
 
@@ -98,6 +99,28 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ```
 
 ## 📡 API Examples
+
+### Evaluation Endpoint with Enrichment
+
+Evaluate applicants with optional LinkedIn and PDF resume enrichment:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/llm/evaluate" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "YOUR_API_KEY",
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-20241022",
+    "applicant_data": "Applicant information...",
+    "criteria_string": "Evaluation criteria...",
+    "use_multi_axis": false,
+    "use_plugin": true,
+    "source_url": "https://example.com/resume.pdf"
+  }'
+```
+
+For more details, see [PDF Resume Parser Documentation](docs/plugins/pdf_resume_parser.md).
 
 ### Execute a Plugin
 

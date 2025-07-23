@@ -11,8 +11,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+import time
 
-import structlog
+from src.utils.logging import get_structured_logger
 
 from src.core.plugin_system.plugin_interface import Plugin, PluginRequest, PluginResponse, PluginMetadata
 from src.core.external_mcp.external_mcp_client import ExternalMCPClient
@@ -32,7 +33,7 @@ from src.core.exceptions import (
     ValidationError,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class LinkedInExternalPlugin(Plugin):
@@ -266,6 +267,7 @@ class LinkedInExternalPlugin(Plugin):
         - "scrape_company", "get_company", "company" for companies
         """
         if not self.mcp_client:
+            logger.error("Plugin not initialized - MCP client is None")
             return PluginResponse(
                 request_id=request.request_id,
                 status="error",
@@ -277,14 +279,60 @@ class LinkedInExternalPlugin(Plugin):
                    action=request.action,
                    parameters=request.parameters)
         
+        logger.debug("====================== LINKEDIN EXTERNAL PLUGIN EXECUTION ======================")
+        logger.debug(f"Request ID: {request.request_id}")
+        logger.debug(f"Action: {request.action}")
+        logger.debug(f"Parameters: {request.parameters}")
+        logger.debug(f"Plugin state: initialized={self._initialized}, has_client={self.mcp_client is not None}")
+        
+        # Debug: Print detailed information about the plugin state
+        logger.debug(f"LinkedIn plugin state: initialized={self._initialized}, has_client={self.mcp_client is not None}")
+        if self.mcp_client:
+            logger.debug(f"MCP client: url={self.server_url}, session_active={hasattr(self.mcp_client, 'session') and self.mcp_client.session is not None}")
+            logger.debug(f"MCP client timeout: {self.mcp_client.timeout}s")
+        
         try:
-            action = request.action.lower()
+            # Check if server is healthy
+            logger.debug("Performing health check on LinkedIn MCP server")
+            logger.debug("Performing health check on LinkedIn MCP server...")
+            health_check_result = await self.mcp_client.health_check()
+            logger.debug(f"LinkedIn MCP server health check result: {health_check_result}")
+            logger.debug(f"LinkedIn MCP server health check result: {health_check_result}")
             
-            # Handle profile scraping
-            if action in ["scrape_profile", "get_profile", "profile"]:
+            if not health_check_result:
+                logger.warning("LinkedIn MCP server health check failed, attempting restart")
+                if self.process_manager:
+                    await self.process_manager.restart()
+                await self.mcp_client.initialize_session()
+                logger.info("LinkedIn MCP server restarted and session initialized")
+            
+            # Determine the tool to call and arguments based on request
+            tool_name = ""
+            tool_args = {}
+            
+            # Get the action from the request
+            action = request.action.lower()
+            logger.debug(f"Processing action: {action}")
+            
+            # Special handling for get_person_profile action
+            if action == "get_person_profile":
+                tool_name = "get_person_profile"
+                linkedin_username = request.parameters.get("linkedin_username")
+                if not linkedin_username:
+                    logger.error("Missing required parameter: linkedin_username")
+                    return PluginResponse(
+                        request_id=request.request_id,
+                        status="error",
+                        error="Missing required parameter: linkedin_username"
+                    )
+                tool_args = {"linkedin_username": linkedin_username}
+                logger.info(f"Using get_person_profile with username: {linkedin_username}")
+            elif action in ["scrape_profile", "get_profile", "profile"]:
                 profile_input = request.parameters.get("profile") or request.parameters.get("url") or request.parameters.get("username")
+                logger.debug(f"Profile input: {profile_input}")
                 
                 if not profile_input:
+                    logger.error("Profile URL or username is required")
                     raise ValidationError(
                         "profile",
                         None,
@@ -295,8 +343,10 @@ class LinkedInExternalPlugin(Plugin):
                 linkedin_username = request.parameters.get("linkedin_username", "")
                 if not linkedin_username:
                     linkedin_username = self._extract_username_from_url(profile_input)
+                    logger.debug(f"Extracted username from URL: {linkedin_username}")
                 
                 if not linkedin_username:
+                    logger.error("linkedin_username parameter is required for profile scraping")
                     raise ValidationError(
                         "linkedin_username",
                         None,
@@ -310,8 +360,10 @@ class LinkedInExternalPlugin(Plugin):
             elif action in ["scrape_company", "get_company", "company"]:
                 company_name = request.parameters.get("company_name", "")
                 get_employees = request.parameters.get("get_employees", False)
+                logger.debug(f"Company name: {company_name}, get_employees: {get_employees}")
                 
                 if not company_name:
+                    logger.error("company_name parameter is required for company scraping")
                     raise ValidationError(
                         "company_name",
                         None,
@@ -324,6 +376,7 @@ class LinkedInExternalPlugin(Plugin):
                     tool_args["get_employees"] = True
                 
             else:
+                logger.error(f"Unknown action: {action}")
                 raise ValidationError(
                     "action",
                     None,
@@ -332,6 +385,7 @@ class LinkedInExternalPlugin(Plugin):
             
             # Verify tool is allowed
             if tool_name not in self.allowed_tools:
+                logger.error(f"Tool '{tool_name}' is not allowed")
                 return PluginResponse(
                     request_id=request.request_id,
                     status="error",
@@ -339,9 +393,12 @@ class LinkedInExternalPlugin(Plugin):
                 )
             
             logger.info("Calling external LinkedIn MCP tool", tool=tool_name, args=tool_args)
+            logger.debug(f"Starting tool call at {time.time()}")
             
             # Delegate to external server for actual LinkedIn API interaction
             response = await self.mcp_client.call_tool(tool_name, tool_args)
+            logger.debug(f"Completed tool call at {time.time()}")
+            logger.debug(f"Response is error: {response.isError}")
             
             if response.isError:
                 error_text = ""
@@ -349,6 +406,7 @@ class LinkedInExternalPlugin(Plugin):
                     if content.get("type") == "text":
                         error_text += content.get("text", "")
                 
+                logger.error(f"External MCP error: {error_text}")
                 return PluginResponse(
                     request_id=request.request_id,
                     status="error",
@@ -361,14 +419,20 @@ class LinkedInExternalPlugin(Plugin):
                 if content.get("type") == "text":
                     data = content.get("text", "")
             
+            logger.debug(f"Raw data type: {type(data)}")
+            logger.debug(f"Raw data preview: {str(data)[:100]}..." if data else "None")
+            
             # Try to parse as JSON if it looks like structured data
             # The LinkedIn MCP server sometimes returns JSON strings that need parsing
             if isinstance(data, str) and data.strip().startswith('{'):
                 try:
                     data = json.loads(data)
-                except json.JSONDecodeError:
+                    logger.debug("Successfully parsed JSON data")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON data: {e}")
                     pass
 
+            logger.info(f"LinkedIn plugin returning successful response with data length: {len(str(data)) if data else 0}")
             return PluginResponse(
                 request_id=request.request_id,
                 status="success",

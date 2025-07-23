@@ -12,6 +12,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
       - LOG_LEVEL=INFO
       - PLUGIN_AUTO_RELOAD=true

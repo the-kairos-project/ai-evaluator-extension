@@ -11,8 +11,8 @@ import {
   ViewPickerSynced,
   useBase,
 } from '@airtable/blocks/ui';
-import React from 'react';
-import { useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Logger } from '../lib/logger';
 
 import { globalConfig } from '@airtable/blocks';
 import {
@@ -24,6 +24,7 @@ import {
 import pRetry from 'p-retry';
 import { estimateBatchCost, formatCostEstimate } from '../lib/estimation';
 import { type SetProgress, evaluateApplicants } from '../lib/evaluateApplicants';
+import { isServerModeEnabled } from '../lib/getChatCompletion/server';
 import {
   addFailedApplicants,
   clearFailedApplicants,
@@ -141,7 +142,7 @@ const renderPreviewText = (
 
       return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria. ${costText}. To cancel, please close the entire browser tab.`;
     } catch (error) {
-      console.warn('Cost estimation failed, using fallback:', error);
+      Logger.warn('Cost estimation failed, using fallback:', error);
     }
   }
 
@@ -182,7 +183,7 @@ export const MainPage = () => {
     ).getCurrentConcurrency();
     const BATCH_SIZE = Math.max(1, Math.floor(currentConcurrency / fieldCount));
 
-    console.log(
+    Logger.debug(
       `Processing with batch size of ${BATCH_SIZE} applicants per batch ` +
         `(${fieldCount} fields each, optimized for ${currentConcurrency} concurrent API calls)`
     );
@@ -192,7 +193,7 @@ export const MainPage = () => {
     let processedCount = 0;
 
     // Process in batches to manage memory
-    console.log(
+    Logger.debug(
       `🔄 Starting batch processing loop. Total applicants: ${applicantsToProcess.length}, Batch size: ${BATCH_SIZE}`
     );
 
@@ -201,7 +202,7 @@ export const MainPage = () => {
       batchStart < applicantsToProcess.length;
       batchStart += BATCH_SIZE
     ) {
-      console.log(
+      Logger.debug(
         `🔄 === STARTING BATCH ITERATION: batchStart=${batchStart}, BATCH_SIZE=${BATCH_SIZE} ===`
       );
 
@@ -214,7 +215,7 @@ export const MainPage = () => {
       const batchNumber = Math.floor(batchStart / BATCH_SIZE) + 1;
       const totalBatches = Math.ceil(applicantsToProcess.length / BATCH_SIZE);
 
-      console.log(
+      Logger.debug(
         `📦 Batch ${batchNumber}/${totalBatches}: Processing ${currentBatch.length} applicants (${batchStart + 1}-${Math.min(batchStart + BATCH_SIZE, applicantsToProcess.length)})`
       );
 
@@ -228,7 +229,7 @@ export const MainPage = () => {
       );
 
       // Get evaluation promises for this batch only
-      console.log(
+      Logger.debug(
         `🔨 Generating evaluation promises for batch ${batchNumber} with ${currentBatch.length} applicants...`
       );
       const batchEvaluationPromises = evaluateApplicants(
@@ -245,26 +246,26 @@ export const MainPage = () => {
         },
         evaluationTable // Pass the evaluation table for name field population
       );
-      console.log(
+      Logger.debug(
         `✅ Generated ${batchEvaluationPromises.length} evaluation promises for batch ${batchNumber}`
       );
 
       if (batchEvaluationPromises.length === 0) {
-        console.log(
+        Logger.debug(
           `⚠️ WARNING: No evaluation promises generated for batch ${batchNumber}. Skipping batch.`
         );
         continue;
       }
 
       // Process each evaluation and write to Airtable
-      console.log(
+      Logger.debug(
         `🔄 Starting Promise.allSettled for batch ${batchNumber} with ${batchEvaluationPromises.length} promises`
       );
-      console.log(`📋 Expected applicants in this batch: ${currentBatch.length}`);
-      console.log(`🎯 Expected promises: ${batchEvaluationPromises.length}`);
+      Logger.debug(`📋 Expected applicants in this batch: ${currentBatch.length}`);
+      Logger.debug(`🎯 Expected promises: ${batchEvaluationPromises.length}`);
 
       if (batchEvaluationPromises.length !== currentBatch.length) {
-        console.warn(
+        Logger.warn(
           `⚠️ MISMATCH: Expected ${currentBatch.length} promises but got ${batchEvaluationPromises.length}`
         );
       }
@@ -281,7 +282,7 @@ export const MainPage = () => {
           const applicantNumber = batchStart + index + 1;
           const startTime = Date.now();
 
-          console.log(
+          Logger.debug(
             `🚀 Starting processing of applicant ${applicantNumber} (index ${index} in batch ${batchNumber})`
           );
 
@@ -291,13 +292,13 @@ export const MainPage = () => {
                 `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...`
             );
 
-            console.log(
+            Logger.debug(
               `⏳ Awaiting evaluation promise for applicant ${applicantNumber}...`
             );
 
             const evaluation = await evaluationPromise;
 
-            console.log(
+            Logger.debug(
               `✅ Evaluation promise resolved for applicant ${applicantNumber}`
             );
 
@@ -305,7 +306,7 @@ export const MainPage = () => {
             const applicantId = evaluation[preset.evaluationApplicantField]?.[0]?.id;
             const evaluationTime = Date.now() - startTime;
 
-            console.log(
+            Logger.debug(
               `✅ Evaluated applicant ${applicantNumber} (ID: ${
                 applicantId || 'unknown'
               }) in ${evaluationTime}ms, uploading to Airtable...`
@@ -317,7 +318,7 @@ export const MainPage = () => {
             );
 
             // Write to Airtable with retry
-            console.log(
+            Logger.debug(
               `💾 Starting Airtable save for applicant ${applicantNumber}...`
             );
             const airtableStartTime = Date.now();
@@ -325,9 +326,10 @@ export const MainPage = () => {
             try {
               await pRetry(
                 () => {
-                  console.log(
+                  Logger.debug(
                     `🔄 Attempting Airtable createRecord for applicant ${applicantNumber}...`
                   );
+                  Logger.debug('📤 Record data to write to Airtable:', evaluation);
                   return evaluationTable.createRecordAsync(evaluation);
                 },
                 {
@@ -335,7 +337,7 @@ export const MainPage = () => {
                   factor: 2,
                   minTimeout: 1000,
                   onFailedAttempt: (error) => {
-                    console.warn(
+                    Logger.warn(
                       `⚠️ Airtable save retry ${error.attemptNumber} for applicant ${applicantNumber}: ${error.message}`
                     );
                   },
@@ -343,12 +345,12 @@ export const MainPage = () => {
               );
 
               const airtableTime = Date.now() - airtableStartTime;
-              console.log(
+              Logger.debug(
                 `✅ Airtable save successful for applicant ${applicantNumber} in ${airtableTime}ms`
               );
             } catch (airtableError) {
               const airtableTime = Date.now() - airtableStartTime;
-              console.error(
+              Logger.error(
                 `❌ Airtable save failed for applicant ${applicantNumber} after ${airtableTime}ms:`,
                 airtableError
               );
@@ -358,14 +360,14 @@ export const MainPage = () => {
             const airtableTime = Date.now() - airtableStartTime;
 
             const totalTime = Date.now() - startTime;
-            console.log(
+            Logger.debug(
               `✅ Saved applicant ${applicantNumber} to Airtable in ${airtableTime}ms ` +
                 `(total: ${totalTime}ms)`
             );
 
-            console.log(`🎯 Returning success result for applicant ${applicantNumber}`);
+            Logger.debug(`🎯 Returning success result for applicant ${applicantNumber}`);
             completedPromises++;
-            console.log(
+            Logger.debug(
               `📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed`
             );
             return {
@@ -377,13 +379,13 @@ export const MainPage = () => {
             };
           } catch (error) {
             const totalTime = Date.now() - startTime;
-            console.error(
+            Logger.error(
               `❌ Failed to process applicant ${applicantNumber} after ${totalTime}ms:`,
               error
             );
-            console.log(`🎯 Returning error result for applicant ${applicantNumber}`);
+            Logger.debug(`🎯 Returning error result for applicant ${applicantNumber}`);
             completedPromises++;
-            console.log(
+            Logger.debug(
               `📊 Progress: ${completedPromises}/${batchEvaluationPromises.length} promises completed (with error)`
             );
             return { success: false, error, applicantNumber, totalTime };
@@ -406,14 +408,14 @@ export const MainPage = () => {
       let timedOut = false;
 
       try {
-        console.log(
+        Logger.debug(
           `⏰ Starting batch ${batchNumber} with ${BATCH_TIMEOUT / 1000}s timeout...`
         );
         batchResults = await Promise.race([batchPromise, timeoutPromise]);
-        console.log(`✅ Batch ${batchNumber} completed successfully within timeout`);
+        Logger.debug(`✅ Batch ${batchNumber} completed successfully within timeout`);
       } catch (error) {
         if (error.message.includes('timeout')) {
-          console.error(
+          Logger.error(
             `⏰ Batch ${batchNumber} timed out! Handling partial results...`
           );
           timedOut = true;
@@ -454,10 +456,10 @@ export const MainPage = () => {
       }
 
       const allSettledTime = Date.now() - startAllSettled;
-      console.log(
+      Logger.debug(
         `✅ Promise.allSettled completed for batch ${batchNumber} in ${allSettledTime}ms. Got ${batchResults.length} results.`
       );
-      console.log(
+      Logger.debug(
         `📊 Batch ${batchNumber} results breakdown:`,
         batchResults.map((r) => ({
           status: r.status,
@@ -467,12 +469,12 @@ export const MainPage = () => {
       );
 
       // Count results from this batch and calculate timing
-      console.log(`🔢 Counting results for batch ${batchNumber}...`);
+      Logger.debug(`🔢 Counting results for batch ${batchNumber}...`);
       const batchSuccesses = batchResults.filter(
         (r) => r.status === 'fulfilled' && r.value?.success
       ).length;
       const batchFailures = batchResults.length - batchSuccesses;
-      console.log(
+      Logger.debug(
         `🔢 Batch ${batchNumber} counts: ${batchSuccesses} successes, ${batchFailures} failures out of ${batchResults.length} total`
       );
 
@@ -503,7 +505,7 @@ export const MainPage = () => {
       totalFailures += batchFailures;
       processedCount += currentBatch.length;
 
-      console.log(
+      Logger.debug(
         `📈 Updated totals: ${totalSuccesses} total successes, ${totalFailures} total failures, ${processedCount} processed`
       );
 
@@ -515,24 +517,24 @@ export const MainPage = () => {
         batchMessage += ` Avg times - Evaluation: ${timingStats.avgEvaluationTime}ms, Airtable: ${timingStats.avgAirtableTime}ms, Total: ${timingStats.avgTotalTime}ms`;
       }
 
-      console.log(`📊 ${batchMessage}`);
+      Logger.debug(`📊 ${batchMessage}`);
 
       // Update the user with progress after each batch
-      console.log('🖥️ Updating UI with batch completion message...');
+      Logger.debug('🖥️ Updating UI with batch completion message...');
       setResult(
         `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ${totalSuccesses} successes, ${totalFailures} failures so far. ${batchMessage}`
       );
-      console.log('🖥️ UI updated. About to continue to next batch or finish.');
+      Logger.debug('🖥️ UI updated. About to continue to next batch or finish.');
 
       // Check if we're at the end
       const nextBatchStart = batchStart + BATCH_SIZE;
       const hasMoreBatches = nextBatchStart < applicantsToProcess.length;
-      console.log(
+      Logger.debug(
         `🔄 Batch ${batchNumber} complete. Next start: ${nextBatchStart}, Has more batches: ${hasMoreBatches}`
       );
 
       if (!hasMoreBatches) {
-        console.log(
+        Logger.debug(
           `🏁 All batches completed! Final totals: ${totalSuccesses} successes, ${totalFailures} failures`
         );
       }
@@ -593,7 +595,19 @@ export const MainPage = () => {
     const fieldsToLoad = [
       ...preset.applicantFields.map((f) => f.fieldId),
       applicantTable.primaryField.id,
+      // Add LinkedIn URL field if enrichment is enabled
+      ...(preset.useLinkedinEnrichment && preset.linkedinUrlField ? [preset.linkedinUrlField] : []),
+      // Add PDF resume field if enrichment is enabled
+      ...(preset.usePdfResumeEnrichment && preset.pdfResumeField ? [preset.pdfResumeField] : []),
     ].filter(Boolean);
+    
+    Logger.debug(`🔍 Loading fields: ${fieldsToLoad.join(', ')}`);
+    if (preset.useLinkedinEnrichment && preset.linkedinUrlField) {
+      Logger.debug(`🔍 Including LinkedIn URL field: ${preset.linkedinUrlField}`);
+    }
+    if (preset.usePdfResumeEnrichment && preset.pdfResumeField) {
+      Logger.debug(`📄 Including PDF resume field: ${preset.pdfResumeField}`);
+    }
 
     const applicantRecords = await applicantView.selectRecordsAsync({
       fields: fieldsToLoad,
@@ -628,20 +642,20 @@ export const MainPage = () => {
       1,
       Math.floor(planningConcurrency / preset.evaluationFields.length)
     );
-    console.log('📋 Processing Plan:');
-    console.log(`• Applicants to evaluate: ${applicantRecords.records.length}`);
-    console.log(`• Evaluation fields: ${preset.evaluationFields.length}`);
-    console.log(
+    Logger.debug('📋 Processing Plan:');
+    Logger.debug(`• Applicants to evaluate: ${applicantRecords.records.length}`);
+    Logger.debug(`• Evaluation fields: ${preset.evaluationFields.length}`);
+    Logger.debug(
       `• Total API calls needed: ${applicantRecords.records.length * preset.evaluationFields.length}`
     );
-    console.log(
+    Logger.debug(
       `• Configured concurrency: ${planningConcurrency} simultaneous API calls`
     );
-    console.log(`• Estimated batch size: ${estimatedBatchSize}`);
-    console.log(
+    Logger.debug(`• Estimated batch size: ${estimatedBatchSize}`);
+    Logger.debug(
       `• Expected batches: ${Math.ceil(applicantRecords.records.length / estimatedBatchSize)}`
     );
-    console.log(previewText);
+    Logger.debug(previewText);
 
     // Fast precheck to eliminate applicants that don't need processing
     setResult(
@@ -741,7 +755,17 @@ export const MainPage = () => {
     setRunning(true);
     setProgress(0);
     setResult(null);
-    console.log('Running preset', preset);
+    Logger.debug('Running preset', preset);
+    
+    // Log enrichment configuration details
+    Logger.debug("🧩 Current preset enrichment configuration:", {
+      useLinkedinEnrichment: preset.useLinkedinEnrichment,
+      linkedinUrlField: preset.linkedinUrlField,
+      linkedinDataField: preset.linkedinDataField,
+      usePdfResumeEnrichment: preset.usePdfResumeEnrichment,
+      pdfResumeField: preset.pdfResumeField, 
+      pdfResumeDataField: preset.pdfResumeDataField
+    });
 
     try {
       validatePrerequisites();
@@ -962,6 +986,325 @@ export const MainPage = () => {
               shouldAllowPickingNone={true}
             />
           </FormFieldWithTooltip>
+          
+          {/* Server-specific features section */}
+          {isServerModeEnabled() && (
+            <>
+              <div className="mt-4 mb-2 p-2 bg-blue-50 rounded">
+                <div className="font-bold mb-2">Server Features</div>
+                <p className="text-sm text-gray-600 mb-3">
+                  The following features require server mode to be enabled.
+                </p>
+                
+                {/* LinkedIn Enrichment Options */}
+                <FormFieldWithTooltip
+                  label="LinkedIn Enrichment"
+                  helpKey="linkedinEnrichment"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="useLinkedinEnrichment"
+                      className="mr-2"
+                      checked={preset.useLinkedinEnrichment || false}
+                      onChange={(e) => {
+                        upsertPreset({
+                          ...preset,
+                          useLinkedinEnrichment: e.target.checked,
+                        });
+                      }}
+                    />
+                    <label htmlFor="useLinkedinEnrichment">
+                      Enhance evaluations with LinkedIn profile data
+                    </label>
+                  </div>
+                </FormFieldWithTooltip>
+                
+                {preset.useLinkedinEnrichment && (
+                  <FormFieldWithTooltip
+                    label="LinkedIn URL Field"
+                    helpKey="linkedinUrlField"
+                    showGuidedHelp={showGuidedHelp}
+                  >
+                    <FieldPickerSynced
+                      table={applicantTable}
+                      allowedTypes={[
+                        FieldType.SINGLE_LINE_TEXT,
+                        FieldType.URL,
+                      ]}
+                      globalConfigKey={['presets', preset.name, 'linkedinUrlField']}
+                      shouldAllowPickingNone={true}
+                    />
+                  </FormFieldWithTooltip>
+                )}
+                
+                {preset.useLinkedinEnrichment && (
+                  <FormFieldWithTooltip
+                    label="(optional) LinkedIn Data Field"
+                    helpKey="linkedinDataField"
+                    showGuidedHelp={showGuidedHelp}
+                  >
+                    <FieldPickerSynced
+                      table={evaluationTable}
+                      allowedTypes={[
+                        FieldType.SINGLE_LINE_TEXT,
+                        FieldType.MULTILINE_TEXT,
+                        FieldType.RICH_TEXT,
+                      ]}
+                      globalConfigKey={['presets', preset.name, 'linkedinDataField']}
+                      shouldAllowPickingNone={true}
+                    />
+                  </FormFieldWithTooltip>
+                )}
+                
+                {/* Multi-Axis Evaluation Options */}
+                <FormFieldWithTooltip
+                  label="Multi-Axis Evaluation"
+                  helpKey="multiAxisEvaluation"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="useMultiAxisEvaluation"
+                      className="mr-2"
+                      checked={preset.useMultiAxisEvaluation || false}
+                      onChange={(e) => {
+                        upsertPreset({
+                          ...preset,
+                          useMultiAxisEvaluation: e.target.checked,
+                        });
+                      }}
+                    />
+                    <label htmlFor="useMultiAxisEvaluation">
+                      Use multi-dimensional evaluation (assesses candidates across multiple axes)
+                    </label>
+                  </div>
+                </FormFieldWithTooltip>
+              </div>
+            </>
+          )}
+          
+          {/* Show a warning if server mode is not enabled but these features are */}
+          {!isServerModeEnabled() && (preset.useLinkedinEnrichment || preset.useMultiAxisEvaluation) && (
+            <div className="mt-2 mb-4 p-2 bg-yellow-100 rounded text-yellow-800">
+              <strong>Warning:</strong> You have LinkedIn enrichment or multi-axis evaluation enabled, but server mode is disabled. 
+              These features require server mode to work properly. Please enable server mode in the settings.
+            </div>
+          )}
+          
+          {preset.useMultiAxisEvaluation && (
+            <>
+              <div className="mt-4 mb-2 p-2 bg-gray-100 rounded">
+                <div className="font-bold mb-2">Multi-Axis Output Fields</div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Select output fields for each evaluation axis. These should be numeric fields (Number, Rating, etc.) that will store the 1-5 rating for each dimension.
+                </p>
+
+                {/* General Promise Field */}
+                <FormFieldWithTooltip
+                  label="General Promise Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'generalPromiseField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* ML Skills Field */}
+                <FormFieldWithTooltip
+                  label="ML Skills Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'mlSkillsField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* Software Engineering Field */}
+                <FormFieldWithTooltip
+                  label="Software Engineering Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'softwareEngineeringField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* Policy Experience Field */}
+                <FormFieldWithTooltip
+                  label="Policy Experience Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'policyExperienceField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* AI Safety Understanding Field */}
+                <FormFieldWithTooltip
+                  label="AI Safety Understanding Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'aiSafetyUnderstandingField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* Path to Impact Field */}
+                <FormFieldWithTooltip
+                  label="Path to Impact Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'pathToImpactField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+
+                {/* Research Experience Field */}
+                <FormFieldWithTooltip
+                  label="Research Experience Score Field"
+                  helpKey="outputField"
+                  showGuidedHelp={showGuidedHelp}
+                >
+                  <FieldPickerSynced
+                    table={evaluationTable}
+                    allowedTypes={[
+                      FieldType.NUMBER,
+                      FieldType.PERCENT,
+                      FieldType.RATING,
+                    ]}
+                    globalConfigKey={['presets', preset.name, 'researchExperienceField']}
+                    shouldAllowPickingNone={true}
+                  />
+                </FormFieldWithTooltip>
+              </div>
+
+              <FormFieldWithTooltip
+                label="(optional) Multi-Axis Data Field"
+                helpKey="multiAxisDataField"
+                showGuidedHelp={showGuidedHelp}
+              >
+                <FieldPickerSynced
+                  table={evaluationTable}
+                  allowedTypes={[
+                    FieldType.SINGLE_LINE_TEXT,
+                    FieldType.MULTILINE_TEXT,
+                    FieldType.RICH_TEXT,
+                  ]}
+                  globalConfigKey={['presets', preset.name, 'multiAxisDataField']}
+                  shouldAllowPickingNone={true}
+                />
+              </FormFieldWithTooltip>
+            </>
+          )}
+          
+          {/* PDF Resume Enrichment Options */}
+          <FormFieldWithTooltip
+            label="PDF Resume Enrichment"
+            helpKey="pdfResumeEnrichment"
+            showGuidedHelp={showGuidedHelp}
+          >
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="usePdfResumeEnrichment"
+                className="mr-2"
+                checked={preset.usePdfResumeEnrichment || false}
+                onChange={(e) => {
+                  upsertPreset({
+                    ...preset,
+                    usePdfResumeEnrichment: e.target.checked,
+                  });
+                }}
+              />
+              <label htmlFor="usePdfResumeEnrichment">
+                Enhance evaluations with PDF resume data
+              </label>
+            </div>
+          </FormFieldWithTooltip>
+          
+          {preset.usePdfResumeEnrichment && (
+            <FormFieldWithTooltip
+              label="PDF Resume Field"
+              helpKey="pdfResumeField"
+              showGuidedHelp={showGuidedHelp}
+            >
+              <FieldPickerSynced
+                table={applicantTable}
+                globalConfigKey={['presets', preset.name, 'pdfResumeField']}
+                shouldAllowPickingNone={true}
+              />
+            </FormFieldWithTooltip>
+          )}
+          
+          {preset.usePdfResumeEnrichment && (
+            <FormFieldWithTooltip
+              label="(optional) PDF Resume Data Field"
+              helpKey="pdfResumeDataField"
+              showGuidedHelp={showGuidedHelp}
+            >
+              <FieldPickerSynced
+                table={evaluationTable}
+                allowedTypes={[
+                  FieldType.SINGLE_LINE_TEXT,
+                  FieldType.MULTILINE_TEXT,
+                  FieldType.RICH_TEXT,
+                ]}
+                globalConfigKey={['presets', preset.name, 'pdfResumeDataField']}
+                shouldAllowPickingNone={true}
+              />
+            </FormFieldWithTooltip>
+          )}
         </>
       )}
 

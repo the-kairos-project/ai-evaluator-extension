@@ -90,6 +90,17 @@ class PluginValidationError(PluginException):
         )
 
 
+class PluginLoadError(PluginException):
+    """Raised when a plugin fails to load."""
+    
+    def __init__(self, plugin_name: str, reason: str, cause: Optional[Exception] = None):
+        super().__init__(
+            f"Failed to load plugin '{plugin_name}': {reason}",
+            details={"plugin_name": plugin_name, "reason": reason},
+            cause=cause
+        )
+
+
 # External MCP exceptions
 class ExternalMCPException(MCPException):
     """Base exception for external MCP integration errors."""

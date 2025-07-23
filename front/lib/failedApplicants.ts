@@ -4,6 +4,7 @@
 
 import { globalConfig } from '@airtable/blocks';
 import type { Record as AirtableRecord } from '@airtable/blocks/models';
+import { Logger } from './logger';
 
 export interface FailedApplicant {
   recordId: string;
@@ -129,7 +130,7 @@ export const addFailedApplicants = async (
 
   await globalConfig.setAsync('failedApplicants', updated as any);
 
-  console.log(
+  Logger.info(
     `📝 Added ${newFailed.length} failed applicants to retry list. Total: ${updated.length}`
   );
 };
@@ -139,7 +140,7 @@ export const addFailedApplicants = async (
  */
 export const clearFailedApplicants = async (): Promise<void> => {
   await globalConfig.setAsync('failedApplicants', []);
-  console.log('🧹 Cleared failed applicants list');
+  Logger.info('🧹 Cleared failed applicants list');
 };
 
 /**
@@ -151,7 +152,7 @@ export const removeFailedApplicants = async (recordIds: string[]): Promise<void>
 
   await globalConfig.setAsync('failedApplicants', filtered as any);
 
-  console.log(
+  Logger.info(
     `✅ Removed ${recordIds.length} successfully retried applicants from failed list`
   );
 };

@@ -6,9 +6,9 @@ This module provides utilities for parsing SSE responses from MCP servers.
 
 import json
 from typing import Any, Dict, Optional, Tuple
-import structlog
+from src.utils.logging import get_structured_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class SSEParseError(Exception):
