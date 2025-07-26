@@ -2,7 +2,9 @@ import type { Record as AirtableRecord, Table } from '@airtable/blocks/models';
 import { Logger } from './logger';
 import pRetry from 'p-retry';
 import { getChatCompletion } from './getChatCompletion';
-import { isServerModeEnabled, evaluateApplicantWithServer } from './getChatCompletion/server';
+import { isServerModeEnabled, evaluateApplicantWithServer, resetServerFallbackPrompt } from './getChatCompletion/server';
+import { createEvaluationRecords } from './evaluation/airtableWriter';
+
 import type { Preset } from './preset';
 import {
   buildPrompt,
@@ -151,516 +153,6 @@ const buildDependencyMap = (
 };
 
 /**
- * Extract LinkedIn data from evaluation result
- */
-function extractLinkedinData(result: string): string | null {
-  Logger.debug("🔍 Attempting to extract LinkedIn data from string of length:", result.length);
-  
-  // Try different pattern variations that might appear in the text
-  let patterns = [
-    /\[LINKEDIN_DATA\]([\s\S]*?)\[END_LINKEDIN_DATA\]/,
-    /\[LINKEDIN_DATA\]\s*([\s\S]*?)\s*\[END_LINKEDIN_DATA\]/,
-    /\[LINKEDIN_DATA\]\n([\s\S]*?)\n\[END_LINKEDIN_DATA\]/,
-    /\[LINKEDIN_DATA\][\r\n]+([\s\S]*?)[\r\n]+\[END_LINKEDIN_DATA\]/
-  ];
-  
-  // Try each pattern
-  for (const pattern of patterns) {
-    const match = result.match(pattern);
-    if (match && match[1]) {
-      Logger.debug("🔍 LinkedIn data match found with pattern:", pattern);
-      Logger.debug("🔍 LinkedIn data extracted, length:", match[1].trim().length);
-      return match[1].trim();
-    }
-  }
-  
-  // If we got here, no match was found
-  Logger.debug("🔍 LinkedIn data not found with any pattern");
-  
-  // Log a small excerpt to help debug
-  const excerpt = result.substring(0, 200);
-  Logger.debug("🔍 First 200 chars of content:", excerpt);
-  
-  // If result contains [LINKEDIN_DATA] but we couldn't extract it, log the position
-  const marker = "[LINKEDIN_DATA]";
-  const endMarker = "[END_LINKEDIN_DATA]";
-  const markerIndex = result.indexOf(marker);
-  const endMarkerIndex = result.indexOf(endMarker);
-  
-  if (markerIndex !== -1) {
-    Logger.debug(`🔍 Found [LINKEDIN_DATA] at position ${markerIndex}, content around it:`, 
-      result.substring(Math.max(0, markerIndex - 20), markerIndex + marker.length + 50));
-      
-    if (endMarkerIndex !== -1) {
-      Logger.debug(`🔍 Found [END_LINKEDIN_DATA] at position ${endMarkerIndex}`);
-      Logger.debug(`🔍 Distance between markers: ${endMarkerIndex - (markerIndex + marker.length)}`);
-    } else {
-      Logger.debug("🔍 End marker [END_LINKEDIN_DATA] not found");
-    }
-  }
-  
-  return null;
-}
-
-/**
- * Extract enrichment logs from evaluation result
- */
-function extractEnrichmentLogs(result: string): string | null {
-  Logger.debug("📋 Attempting to extract enrichment logs from string of length:", result.length);
-  
-  // Try different pattern variations that might appear in the text
-  let patterns = [
-    /\[ENRICHMENT LOG\]([\s\S]*?)\[END ENRICHMENT LOG\]/,
-    /\[ENRICHMENT LOG\]\s*([\s\S]*?)\s*\[END ENRICHMENT LOG\]/,
-    /\[ENRICHMENT LOG\]\n([\s\S]*?)\n\[END ENRICHMENT LOG\]/,
-    /\[ENRICHMENT LOG\][\r\n]+([\s\S]*?)[\r\n]+\[END ENRICHMENT LOG\]/
-  ];
-  
-  // Try each pattern
-  for (const pattern of patterns) {
-    const match = result.match(pattern);
-    if (match && match[1]) {
-      Logger.debug("📋 Enrichment logs found with pattern:", pattern);
-      Logger.debug("📋 Enrichment logs extracted, length:", match[1].trim().length);
-      return match[1].trim();
-    }
-  }
-  
-  Logger.debug("📋 No enrichment logs found");
-  return null;
-}
-
-/**
- * Extract PDF resume data from evaluation result
- */
-function extractPdfResumeData(result: string): string | null {
-  Logger.debug("📄 Attempting to extract PDF resume data from string of length:", result.length);
-  
-  // Try different pattern variations that might appear in the text
-  let patterns = [
-    /\[PDF_RESUME_DATA\]([\s\S]*?)\[END_PDF_RESUME_DATA\]/,
-    /\[PDF_RESUME_DATA\]\s*([\s\S]*?)\s*\[END_PDF_RESUME_DATA\]/,
-    /\[PDF_RESUME_DATA\]\n([\s\S]*?)\n\[END_PDF_RESUME_DATA\]/,
-    /\[PDF_RESUME_DATA\][\r\n]+([\s\S]*?)[\r\n]+\[END_PDF_RESUME_DATA\]/
-  ];
-  
-  // Try each pattern
-  for (const pattern of patterns) {
-    const match = result.match(pattern);
-    if (match && match[1]) {
-      Logger.debug("📄 PDF resume data match found with pattern:", pattern);
-      Logger.debug("📄 PDF resume data extracted, length:", match[1].trim().length);
-      return match[1].trim();
-    }
-  }
-  
-  // If we got here, no match was found
-  Logger.debug("📄 PDF resume data not found with any pattern");
-  
-  // Log a small excerpt to help debug
-  const excerpt = result.substring(0, 200);
-  Logger.debug("📄 First 200 chars of content:", excerpt);
-  
-  // If result contains [PDF_RESUME_DATA] but we couldn't extract it, log the position
-  const marker = "[PDF_RESUME_DATA]";
-  const endMarker = "[END_PDF_RESUME_DATA]";
-  const markerIndex = result.indexOf(marker);
-  const endMarkerIndex = result.indexOf(endMarker);
-  
-  if (markerIndex !== -1) {
-    Logger.debug(`📄 Found [PDF_RESUME_DATA] at position ${markerIndex}, content around it:`, 
-      result.substring(Math.max(0, markerIndex - 20), markerIndex + marker.length + 50));
-      
-    if (endMarkerIndex !== -1) {
-      Logger.debug(`📄 Found [END_PDF_RESUME_DATA] at position ${endMarkerIndex}`);
-      Logger.debug(`📄 Distance between markers: ${endMarkerIndex - (markerIndex + marker.length)}`);
-    } else {
-      Logger.debug("📄 End marker [END_PDF_RESUME_DATA] not found");
-    }
-  }
-  
-  return null;
-}
-
-/**
- * Create evaluation records in Airtable
- */
-/**
- * Extract multi-axis scores from eval result
- */
-function extractMultiAxisData(result: string, axisScores?: Array<{name: string, score: number | null}>): string | null {
-  // If we have axis scores directly, format them
-  if (axisScores && Array.isArray(axisScores)) {
-    try {
-      // Format multi-axis scores as readable text
-      let formattedData = "## Multi-Axis Evaluation Scores\n\n";
-      
-      axisScores.forEach(axis => {
-        formattedData += `### ${axis.name}\n`;
-        formattedData += `Score: ${axis.score !== null ? axis.score : 'Not available'}\n\n`;
-      });
-      
-      return formattedData;
-    } catch (e) {
-      console.error('Error formatting multi-axis data:', e);
-      return JSON.stringify(axisScores, null, 2);
-    }
-  }
-  
-  // As a fallback, try to extract from the result text
-  const multiAxisMatch = result.match(/\[MULTI_AXIS_SCORES\]([\s\S]*?)\[END_MULTI_AXIS_SCORES\]/);
-  
-  if (multiAxisMatch && multiAxisMatch[1]) {
-    // Clean up the data and format it
-    let multiAxisData = multiAxisMatch[1].trim();
-    
-    try {
-      // Try to parse as JSON for prettier formatting
-      const parsedData = JSON.parse(multiAxisData);
-      return JSON.stringify(parsedData, null, 2);
-    } catch (e) {
-      // If it's not valid JSON, just return the raw text
-      return multiAxisData;
-    }
-  }
-  
-  return null;
-}
-
-async function createEvaluationRecords(
-  evaluationTable: Table,
-  applicantRecord: AirtableRecord,
-  applicantFieldId: string,
-  logsFieldId: string | undefined,
-  linkedinDataFieldId: string | undefined,
-  pdfResumeDataFieldId: string | undefined,
-  multiAxisDataFieldId: string | undefined,
-  // Individual axis fields
-  generalPromiseFieldId: string | undefined,
-  mlSkillsFieldId: string | undefined,
-  softwareEngineeringFieldId: string | undefined,
-  policyExperienceFieldId: string | undefined,
-  aiSafetyUnderstandingFieldId: string | undefined,
-  pathToImpactFieldId: string | undefined,
-  researchExperienceFieldId: string | undefined,
-  results: Record<string, number | string>,
-  logsByField: Record<string, string>
-): Promise<void> {
-  Logger.info("📝 Creating evaluation record for applicant:", applicantRecord.name || applicantRecord.id);
-  Logger.debug("📝 logsByField structure:", {
-    fieldCount: Object.keys(logsByField).length,
-    fieldIds: Object.keys(logsByField),
-    sampleLogLength: Object.values(logsByField)[0]?.length || 0
-  });
-  
-  // Log all the field IDs to debug what's being passed
-  Logger.info("🔍 Field IDs received in createEvaluationRecords:", {
-    logsFieldId,
-    linkedinDataFieldId,
-    pdfResumeDataFieldId,
-    multiAxisDataFieldId,
-    generalPromiseFieldId,
-    mlSkillsFieldId,
-    softwareEngineeringFieldId,
-    policyExperienceFieldId,
-    aiSafetyUnderstandingFieldId,
-    pathToImpactFieldId,
-    researchExperienceFieldId
-  });
-  
-  // Create the record data
-  const recordData: Record<string, any> = {
-    [applicantFieldId]: [{ id: applicantRecord.id }],
-  };
-
-  // Add field results
-  for (const [fieldId, value] of Object.entries(results)) {
-    if (typeof value === 'number' || typeof value === 'string') {
-      recordData[fieldId] = value;
-    }
-  }
-
-  // Add logs if a logs field is specified
-  if (logsFieldId) {
-    // Strip out LinkedIn/PDF/Multi-axis blocks from the Logs field (they go to dedicated columns)
-    const stripBlocks = (text: string): string => {
-      return text
-        // LinkedIn
-        .replace(/\[LINKEDIN_DATA\][\s\S]*?\[END_LINKEDIN_DATA\]/g, '')
-        // PDF resume
-        .replace(/\[PDF_RESUME_DATA\][\s\S]*?\[END_PDF_RESUME_DATA\]/g, '')
-        // Enrichment log
-        .replace(/\[ENRICHMENT LOG\][\s\S]*?\[END ENRICHMENT LOG\]/g, '')
-        // Multi-axis scores
-        .replace(/\[MULTI_AXIS_SCORES\][\s\S]*?\[END_MULTI_AXIS_SCORES\]/g, '')
-        .trim();
-    };
-
-    const combinedLogs = Object.entries(logsByField)
-      .map(([fieldId, log]) => `## Field: ${fieldId}\n\n${stripBlocks(log)}`)
-      .join('\n\n---\n\n');
-    recordData[logsFieldId] = combinedLogs;
-  }
-
-  // Extract and add LinkedIn data if a LinkedIn data field is specified
-  if (linkedinDataFieldId) {
-    Logger.info("🔗 LinkedIn field ID exists:", linkedinDataFieldId);
-    Logger.debug("🔗 Looking for LinkedIn data with linkedinDataFieldId:", linkedinDataFieldId);
-    let linkedinContent = "";
-    let enrichmentLogs = "";
-    
-    // Look for LinkedIn data and enrichment logs in any of the logs
-    for (const log of Object.values(logsByField)) {
-      Logger.debug("🔗 Checking log for LinkedIn data, log length:", log.length);
-      
-      // Check if the log contains LinkedIn markers
-      if (log.includes("[LINKEDIN_DATA]")) {
-        Logger.info("🔗 Found [LINKEDIN_DATA] marker in log!");
-      }
-      
-      // Extract LinkedIn data if not already found
-      if (!linkedinContent) {
-        const linkedinData = extractLinkedinData(log);
-        if (linkedinData) {
-          Logger.info("🔗 LinkedIn data extracted successfully!", {
-            dataLength: linkedinData.length,
-            first100Chars: linkedinData.substring(0, 100)
-          });
-          linkedinContent = linkedinData;
-        }
-      }
-      
-      // Extract enrichment logs if not already found
-      if (!enrichmentLogs) {
-        const logs = extractEnrichmentLogs(log);
-        if (logs && logs.includes("LinkedIn")) {
-          Logger.debug("🔗 LinkedIn enrichment logs found!");
-          enrichmentLogs = logs;
-        }
-      }
-      
-      // If we have both, break early
-      if (linkedinContent && enrichmentLogs) {
-        break;
-      }
-    }
-    
-    // Combine LinkedIn data with enrichment logs if available
-    if (linkedinContent || enrichmentLogs) {
-      let combinedData = "";
-      
-      if (linkedinContent) {
-        combinedData += linkedinContent;
-      }
-      
-      if (enrichmentLogs) {
-        combinedData += (linkedinContent ? "\n\n---\n\n" : "") + "## Enrichment Logs\n\n" + enrichmentLogs;
-      }
-      
-      Logger.info("🔗 Setting LinkedIn data in field:", {
-        fieldId: linkedinDataFieldId,
-        dataLength: combinedData.length,
-        hasContent: !!linkedinContent,
-        hasLogs: !!enrichmentLogs
-      });
-      recordData[linkedinDataFieldId] = combinedData;
-      Logger.debug('📊 LinkedIn data and logs extracted and stored in specified field');
-    } else {
-      Logger.warn("⚠️ No LinkedIn data found in any logs");
-    }
-  } else {
-    Logger.info("🔗 No LinkedIn field ID configured");
-  }
-  
-  // Extract and add PDF resume data if a PDF resume data field is specified
-  if (pdfResumeDataFieldId) {
-    Logger.info("📑 PDF field ID exists:", pdfResumeDataFieldId);
-    Logger.debug("📑 Looking for PDF resume data with pdfResumeDataFieldId:", pdfResumeDataFieldId);
-    let pdfContent = "";
-    let enrichmentLogs = "";
-    
-    // Look for PDF resume data and enrichment logs in any of the logs
-    for (const log of Object.values(logsByField)) {
-      Logger.debug("📑 Checking log for PDF resume data, log length:", log.length);
-      
-      // Check if the log contains PDF markers
-      if (log.includes("[PDF_RESUME_DATA]")) {
-        Logger.info("📑 Found [PDF_RESUME_DATA] marker in log!");
-      }
-      
-      // Extract PDF data if not already found
-      if (!pdfContent) {
-        const pdfResumeData = extractPdfResumeData(log);
-        if (pdfResumeData) {
-          Logger.info("📑 PDF resume data extracted successfully!", {
-            dataLength: pdfResumeData.length,
-            first100Chars: pdfResumeData.substring(0, 100)
-          });
-          pdfContent = pdfResumeData;
-        }
-      }
-      
-      // Extract enrichment logs if not already found (look for PDF-related logs)
-      if (!enrichmentLogs) {
-        const logs = extractEnrichmentLogs(log);
-        if (logs && (logs.includes("PDF") || logs.includes("resume"))) {
-          Logger.debug("📑 PDF enrichment logs found!");
-          enrichmentLogs = logs;
-        }
-      }
-      
-      // If we have both, break early
-      if (pdfContent && enrichmentLogs) {
-        break;
-      }
-    }
-    
-    // Combine PDF data with enrichment logs if available
-    if (pdfContent || enrichmentLogs) {
-      let combinedData = "";
-      
-      if (pdfContent) {
-        combinedData += pdfContent;
-      }
-      
-      if (enrichmentLogs) {
-        combinedData += (pdfContent ? "\n\n---\n\n" : "") + "## Enrichment Logs\n\n" + enrichmentLogs;
-      }
-      
-      Logger.info("📑 Setting PDF data in field:", {
-        fieldId: pdfResumeDataFieldId,
-        dataLength: combinedData.length,
-        hasContent: !!pdfContent,
-        hasLogs: !!enrichmentLogs
-      });
-      recordData[pdfResumeDataFieldId] = combinedData;
-      Logger.debug('📄 PDF resume data and logs extracted and stored in specified field');
-    } else {
-      Logger.warn("⚠️ No PDF resume data found in any logs");
-    }
-  } else {
-    Logger.info("📑 No PDF field ID configured");
-  }
-  
-  // Extract and add multi-axis data and individual scores
-  // Check if multi_axis_scores exists in the results object
-  if (results.multi_axis_scores && Array.isArray(results.multi_axis_scores)) {
-    Logger.debug("📊 Multi-axis scores found in results object!");
-    const multiAxisScores = results.multi_axis_scores as Array<{name: string, score: number | null}>;
-    Logger.debug("📋 Multi-axis field IDs:", {
-      generalPromiseFieldId,
-      mlSkillsFieldId,
-      softwareEngineeringFieldId,
-      policyExperienceFieldId,
-      aiSafetyUnderstandingFieldId,
-      pathToImpactFieldId,
-      researchExperienceFieldId
-    });
-    Logger.debug("📋 Axis scores array:", multiAxisScores);
-    // Add individual axis scores to their respective fields
-    if (multiAxisScores.length > 0) {
-      Logger.debug("📊 Processing individual axis scores");
-      
-      // Process each axis score and add to the corresponding field if defined
-      multiAxisScores.forEach(axisScore => {
-        const axisName = axisScore.name;
-        const score = axisScore.score;
-        
-        if (score !== null) {
-          // General Promise
-          if (generalPromiseFieldId && axisName === "General Promise") {
-            Logger.debug(`📊 Adding General Promise score (${score}) to field: ${generalPromiseFieldId}`);
-            recordData[generalPromiseFieldId] = score;
-          }
-          
-          // ML Skills
-          else if (mlSkillsFieldId && axisName === "ML Skills") {
-            Logger.debug(`📊 Adding ML Skills score (${score}) to field: ${mlSkillsFieldId}`);
-            recordData[mlSkillsFieldId] = score;
-          }
-          
-          // Software Engineering Skills
-          else if (softwareEngineeringFieldId && axisName === "Software Engineering Skills") {
-            Logger.debug(`📊 Adding Software Engineering score (${score}) to field: ${softwareEngineeringFieldId}`);
-            recordData[softwareEngineeringFieldId] = score;
-          }
-          
-          // Policy Experience
-          else if (policyExperienceFieldId && axisName === "Policy Experience") {
-            Logger.debug(`📊 Adding Policy Experience score (${score}) to field: ${policyExperienceFieldId}`);
-            recordData[policyExperienceFieldId] = score;
-          }
-          
-          // Understanding of AI Safety
-          else if (aiSafetyUnderstandingFieldId && axisName === "Understanding of AI Safety") {
-            Logger.debug(`📊 Adding AI Safety Understanding score (${score}) to field: ${aiSafetyUnderstandingFieldId}`);
-            recordData[aiSafetyUnderstandingFieldId] = score;
-          }
-          
-          // Path to Impact
-          else if (pathToImpactFieldId && axisName === "Path to Impact") {
-            Logger.debug(`📊 Adding Path to Impact score (${score}) to field: ${pathToImpactFieldId}`);
-            recordData[pathToImpactFieldId] = score;
-          }
-          
-          // Research Experience
-          else if (researchExperienceFieldId && axisName === "Research Experience") {
-            Logger.debug(`📊 Adding Research Experience score (${score}) to field: ${researchExperienceFieldId}`);
-            recordData[researchExperienceFieldId] = score;
-          }
-        }
-      });
-    }
-    
-    // Add the formatted multi-axis data to the multi-axis data field if specified
-    if (multiAxisDataFieldId) {
-      Logger.debug("📊 Looking for multi-axis data with multiAxisDataFieldId:", multiAxisDataFieldId);
-      const multiAxisData = extractMultiAxisData("", multiAxisScores);
-      
-      if (multiAxisData) {
-        Logger.debug("📊 Formatting multi-axis data for field:", multiAxisDataFieldId);
-        Logger.debug("📊 Multi-axis data snippet:", multiAxisData.substring(0, 100) + "...");
-        recordData[multiAxisDataFieldId] = multiAxisData;
-        Logger.debug('📊 Multi-axis data extracted and stored in specified field');
-      }
-    }
-  } 
-  // Try to find multi-axis data in logs as fallback
-  else if (multiAxisDataFieldId) {
-    Logger.debug("📊 No multi_axis_scores in results, checking logs for multi-axis data");
-    // Look for multi-axis data in any of the logs as fallback
-    for (const log of Object.values(logsByField)) {
-      Logger.debug("📊 Checking log for multi-axis data, log length:", log.length);
-      const multiAxisData = extractMultiAxisData(log);
-      if (multiAxisData) {
-        Logger.debug("📊 Multi-axis data found in log! Setting in field:", multiAxisDataFieldId);
-        Logger.debug("📊 Multi-axis data snippet:", multiAxisData.substring(0, 100) + "...");
-        recordData[multiAxisDataFieldId] = multiAxisData;
-        Logger.debug('📊 Multi-axis data extracted and stored in specified field');
-        break;
-      }
-    }
-    
-    // If we get here and haven't found data, log it
-    if (!recordData[multiAxisDataFieldId]) {
-      Logger.warn("⚠️ No multi-axis data found in results or logs");
-    }
-  }
-
-  Logger.debug('📋 Enrichment logs structure:', logsByField);
-  // Log final record data for debugging which fields will be written
-  Logger.info('📤 Final recordData to write:', {
-    fieldIds: Object.keys(recordData),
-    hasLinkedinData: linkedinDataFieldId ? linkedinDataFieldId in recordData : 'N/A',
-    hasPdfData: pdfResumeDataFieldId ? pdfResumeDataFieldId in recordData : 'N/A',
-    hasMultiAxisData: multiAxisDataFieldId ? multiAxisDataFieldId in recordData : 'N/A'
-  });
-  Logger.debug('📤 Full recordData:', recordData);
-  // Create the record
-  await evaluationTable.createRecordAsync(recordData);
-}
-
-/**
  * Process a batch of applicants
  */
 export async function processBatch(
@@ -675,6 +167,13 @@ export async function processBatch(
   // Fast path: if empty, nothing to process
   if (!applicantRecords.length || !preset.evaluationFields.length) {
     return { successes: 0, failures: 0 };
+  }
+
+  // Reset server-fallback prompt state so we only ask once per batch
+  try {
+    resetServerFallbackPrompt();
+  } catch (e) {
+    // Non-fatal if reset isn't available for some reason
   }
 
   // Get field names for better error messages
@@ -815,6 +314,18 @@ export async function processBatch(
           // Use a special key for the raw response to ensure it's processed for extraction
           logsByField['_raw_response'] = evalResult.raw_server_response;
           
+          // Debug: show snippet of raw server response to help trace enrichment markers
+          try {
+            Logger.info('🔎 raw_server_response snippet:', evalResult.raw_server_response.substring(0, 500));
+            Logger.info('🔎 raw_server_response contains markers:', {
+              linkedin: evalResult.raw_server_response.includes('[LINKEDIN_DATA]'),
+              pdf: evalResult.raw_server_response.includes('[PDF_RESUME_DATA]'),
+              enrichmentLog: evalResult.raw_server_response.includes('[ENRICHMENT LOG]'),
+              multiAxis: evalResult.raw_server_response.includes('[MULTI_AXIS_SCORES]')
+            });
+          } catch (e) {
+            Logger.info('🔎 Failed to log raw_server_response snippet', e);
+          }
           // Check if this response contains enrichment data
           Logger.debug(`🔍 Checking raw response for enrichment data markers`);
           Logger.debug(`🔍 Contains [LINKEDIN_DATA]: ${evalResult.raw_server_response.includes('[LINKEDIN_DATA]')}`);
@@ -828,6 +339,18 @@ export async function processBatch(
             if (value.includes('## user') && value.includes('## assistant')) {
               Logger.debug(`📋 Found transcript for field ${key}, length: ${value.length}`);
               logsByField[key] = value;
+              // Debug: log presence of enrichment markers in this transcript
+              try {
+                Logger.info(`🔎 transcript ${key} markers:`, {
+                  linkedin: value.includes('[LINKEDIN_DATA]'),
+                  pdf: value.includes('[PDF_RESUME_DATA]'),
+                  enrichmentLog: value.includes('[ENRICHMENT LOG]'),
+                  multiAxis: value.includes('[MULTI_AXIS_SCORES]')
+                });
+                Logger.info(`🔎 transcript ${key} snippet:`, value.substring(0, 300));
+              } catch (e) {
+                Logger.info(`🔎 Failed to inspect transcript ${key}`, e);
+              }
               
               // Check if this transcript contains enrichment data
               Logger.debug(`🔍 Checking transcript for enrichment data markers in field ${key}`);

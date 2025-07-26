@@ -5,11 +5,30 @@ import { getChatCompletionForProvider } from '..';
 import pRetry from 'p-retry';
 import { Logger } from '../../logger';
 
-// Maximum number of retries for server connection
-const MAX_RETRIES = 2;
+// Defaults (can be overridden via globalConfig)
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_REQUEST_TIMEOUT = 1800000; // 30 minutes default to accommodate enrichment calls
 
-// Timeout for server requests in milliseconds
-const REQUEST_TIMEOUT = 100000;
+// In-memory flag to ensure we prompt the user at most once per batch/session
+let hasShownServerFallbackPrompt = false;
+
+function getRequestTimeout(): number {
+  const cfg = globalConfig.get('serverRequestTimeout');
+  if (typeof cfg === 'number' && !isNaN(cfg)) return cfg;
+  if (typeof cfg === 'string' && !isNaN(Number(cfg))) return Number(cfg);
+  return DEFAULT_REQUEST_TIMEOUT;
+}
+
+function getServerMaxRetries(): number {
+  const cfg = globalConfig.get('serverMaxRetries');
+  if (typeof cfg === 'number' && !isNaN(cfg)) return cfg;
+  if (typeof cfg === 'string' && !isNaN(Number(cfg))) return Number(cfg);
+  return DEFAULT_MAX_RETRIES;
+}
+
+export function resetServerFallbackPrompt(): void {
+  hasShownServerFallbackPrompt = false;
+}
 
 // Cache for auth token
 interface TokenCache {
@@ -100,7 +119,7 @@ async function getAuthToken(): Promise<string> {
   
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    const timeoutId = setTimeout(() => controller.abort(), getRequestTimeout());
     
     const response = await fetch(`${serverUrl}/api/v1/auth/token`, {
       method: 'POST',
@@ -193,7 +212,7 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         
         // Create abort controller for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+        const timeoutId = setTimeout(() => controller.abort(), getRequestTimeout());
         
         Logger.debug(`📤 Sending request to server: ${serverUrl}/api/v1/llm/${selectedProvider}`);
         
@@ -245,24 +264,27 @@ export const getChatCompletion: GetChatCompletion = async (messages) => {
         throw error;
       }
     }, {
-      retries: MAX_RETRIES,
+      retries: getServerMaxRetries(),
       onFailedAttempt: (error) => {
-        Logger.warn(`🔄 Attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
+        Logger.warn(`🔄 Attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${DEFAULT_MAX_RETRIES + 1})`);
       }
     });
   } catch (error) {
     Logger.error(`❌ Error calling ${selectedProvider} API via server:`, error);
     
-    // Show error popup with fallback option
-    if (confirm(`Server connection failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
-      Logger.info('🔄 Switching to direct API mode');
-      await setServerMode(false);
-      
-      // Fallback to direct API call
-      Logger.warn(`⚠️ Falling back to direct ${selectedProvider.toUpperCase()} API call`);
-      return getChatCompletionForProvider(selectedProvider)(messages);
+    // Show error popup with fallback option at most once (per batch)
+    if (!hasShownServerFallbackPrompt) {
+      hasShownServerFallbackPrompt = true;
+      if (confirm(`Server connection failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
+        Logger.info('🔄 Switching to direct API mode');
+        await setServerMode(false);
+        
+        // Fallback to direct API call
+        Logger.warn(`⚠️ Falling back to direct ${selectedProvider.toUpperCase()} API call`);
+        return getChatCompletionForProvider(selectedProvider)(messages);
+      }
     }
-    
+
     throw error;
   }
 };
@@ -317,7 +339,7 @@ export async function evaluateApplicantWithServer(
         
         // Create abort controller for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+        const timeoutId = setTimeout(() => controller.abort(), getRequestTimeout());
         
         Logger.debug(`📤 Sending evaluation request to server: ${serverUrl}/api/v1/llm/evaluate`);
         
@@ -465,24 +487,27 @@ export async function evaluateApplicantWithServer(
         throw error;
       }
     }, {
-      retries: MAX_RETRIES,
+      retries: getServerMaxRetries(),
       onFailedAttempt: (error) => {
-        Logger.warn(`🔄 Evaluation attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${MAX_RETRIES + 1})`);
+        Logger.warn(`🔄 Evaluation attempt failed: ${error.message}. Retrying... (${error.attemptNumber}/${DEFAULT_MAX_RETRIES + 1})`);
       }
     });
   } catch (error) {
     Logger.error(`❌ Error calling evaluation API via server:`, error);
     
-    // Show error popup with fallback option
-    if (confirm(`Server evaluation failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
-      Logger.info('🔄 Switching to direct API mode');
-      await setServerMode(false);
-      
-      // Return null to indicate fallback needed (handled by caller)
-      Logger.warn(`⚠️ Returning null score to trigger fallback to direct mode`);
-      return { result: '', score: null };
+    // Show error popup with fallback option at most once (per batch)
+    if (!hasShownServerFallbackPrompt) {
+      hasShownServerFallbackPrompt = true;
+      if (confirm(`Server evaluation failed: ${error.message}\n\nWould you like to switch to direct API mode?`)) {
+        Logger.info('🔄 Switching to direct API mode');
+        await setServerMode(false);
+        
+        // Return null to indicate fallback needed (handled by caller)
+        Logger.warn(`⚠️ Returning null score to trigger fallback to direct mode`);
+        return { result: '', score: null };
+      }
     }
-    
+
     throw error;
   }
 } 
