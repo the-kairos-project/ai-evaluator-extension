@@ -20,9 +20,9 @@ docker-compose up -d linkedin-mcp
 
 ## Configuration
 
-The plugin requires a valid LinkedIn cookie to authenticate with LinkedIn. This cookie can be provided in several ways:
+The plugin requires a valid LinkedIn session cookie to authenticate with LinkedIn. Specifically, set the `li_at` cookie value as the session cookie. Provide this value to the plugin in one of the following ways:
 
-1. Environment variable: `LINKEDIN_COOKIE`
+1. Environment variable: `LINKEDIN_COOKIE` (set to the `li_at` cookie value)
 2. Configuration file: `.env`
 3. Runtime configuration when initializing the plugin
 

@@ -69,81 +69,68 @@ If you want to install this on a new base see [these instructions](https://www.a
 
 ## API Architecture
 
-This extension now uses direct API calls for both OpenAI and Anthropic providers:
+This extension supports two modes of operation. Choose the one that fits your deployment and governance needs.
 
-### OpenAI: Direct API Calls ✅
-- **No proxy required**
-- Calls directly to `https://api.openai.com/v1/chat/completions`
-- OpenAI allows cross-origin requests from Airtable extensions
-- **Setup**: Just configure your API key - no additional steps needed
+- **Non-server (local) usage** — the extension runs entirely in the Airtable client (browser) and calls AI provider APIs directly.
+- **Server-based usage** — the extension routes requests through a Kairos MCP server which can perform enrichment (LinkedIn, PDF), multi-axis evaluation, and centralized logging.
 
-### Anthropic: Direct API Calls ✅
-- **No proxy required** (updated with direct browser access)
-- Calls directly to `https://api.anthropic.com/v1/messages`
-- Uses `anthropic-dangerous-direct-browser-access: true` header for CORS
-- **Setup**: Just configure your API key - no additional steps needed
+### Non-server usage (direct from Airtable)
+
+- Works as the extension currently behaves: direct browser requests to OpenAI and Anthropic.
+- No proxy required for OpenAI; Anthropic requires the `anthropic-dangerous-direct-browser-access` header for CORS where applicable.
+- Configuration: set your provider, model, and API keys in the extension settings (stored in your Airtable base).
+- Pros: simplest setup, keeps data local to your environment. Cons: limited central control and no server-side enrichment.
+
+For additional information on privacy, terms, and the built-in help system see `front/docs/PRIVACY_POLICY.md`, `front/docs/TERMS_OF_SERVICE.md`, and `front/docs/helpSystem.md`.
+
+### Server-based usage (recommended for centralized workflows)
+
+Use server-based mode when you want centralized enrichment, auditing, or to route requests through the MCP server for consistency and additional processing.
+
+Key points:
+
+- **How it works**: The extension sends requests to your MCP server (example: `https://your-mcp-server`) instead of calling provider APIs directly. The MCP server is responsible for calling LLM providers, running plugins (LinkedIn, PDF), and performing multi-axis evaluation.
+- **Per-request keys**: The system supports per-request API key behavior — the extension can forward user-supplied provider keys or the server can use its own configured keys depending on your deployment policy.
+- **Flags & options**: When running server-based, the extension may pass flags such as `enrichLinkedIn`, `enrichPDF`, and `multiAxis` to control enrichment and scoring behavior. See the server README for the full API and available options (`../server/README.md`).
+- **Authentication**: Server mode typically requires the extension to authenticate to the server (JWT or bearer token). Refer to the server documentation for token setup and refresh behavior.
+- **Benefits**: centralized logging, controlled prompt templates, consistent model selection, server-side normalization and fallbacks, and plugin-driven enrichment.
+
+- **Available server tools**: The MCP server exposes plugin-based tools such as **PDF resume parsing** and **LinkedIn enrichment/scraping**. These are executed server-side and return structured enrichment data alongside evaluation logs.
+
+For full server API details and deployment instructions, see `../server/README.md`.
 
 ### Development Workflow
 
-**For both OpenAI and Anthropic:**
+To run the extension locally in either mode:
+
 ```bash
 bun run start:applications
-# That's it! Both providers work directly now
+# or
+bun run start
 ```
 
-**Available Scripts:**
+Available scripts:
+
 - `bun run start:applications` - Start the Airtable extension
-- `bun run dev` - Same as start:applications
+- `bun run dev` - Alias for `start:applications`
+- `bun run deploy` - Deploy a new extension build
 
-### Troubleshooting
+### Troubleshooting (common)
 
-**"Failed to fetch" error:**
-- Check your internet connection
-- Verify your API keys are configured correctly in `lib/env.ts`
-- Ensure your API keys have sufficient credits/permissions
-
-**Airtable connection issues:**
-- Verify your `blockId` and `baseId` are correct in `.block/applications.remote.json`
-- Ensure the Block ID starts with `blk` and Base ID starts with `app`
-- Make sure you have access permissions to the Airtable base
-- Try refreshing the Airtable page and restarting the development server
+- "Failed to fetch":
+  - Check network connectivity and provider key validity
+  - Verify extension settings and model selection
+- Airtable connection issues:
+  - Confirm `blockId` and `baseId` in `.block/applications.remote.json`
+  - Use the Airtable block CLI (`npx block set-api-key`) if you see `airtableApiBlockNotFound`
 
 ## Models and API Keys
 
-This extension supports both OpenAI and Anthropic Claude models. You can configure:
+Supported models and defaults are defined in `lib/models/config.ts`. Update that file to add or disable models.
 
-1. Which AI provider to use (OpenAI or Anthropic Claude)
-2. Which specific model to use for each provider
-3. API keys for both providers
+Current default models:
 
-The application has a centralized model configuration system located in `lib/models/config.ts`. This makes it easy to:
+- OpenAI default: `gpt-4o-mini`
+- Anthropic default: `claude-3-5-haiku-20241022`
 
-- Add new models when providers release them
-- Update model parameters when providers change them
-- Mark models as unavailable if needed
-
-### Supported Models
-
-#### OpenAI (Direct API)
-- **GPT-4.1** - Successor to GPT-4 Turbo, highly capable flagship model
-- **GPT-4o** - Latest multimodal model with advanced capabilities
-- **GPT-4o mini** - Fast, cost-effective version of GPT-4o (default)
-
-#### Anthropic (Direct API)
-- **Claude Opus 4** - Latest most capable model from Anthropic
-- **Claude Sonnet 4** - Latest balanced model from Anthropic
-- **Claude 3.5 Haiku** - Latest fast and cost-effective model from Anthropic (default)
-
-**Default Models:**
-- OpenAI: `gpt-4o-mini` (cost-effective and fast)
-- Anthropic: `claude-3-5-haiku-20241022` (cost-effective and fast)
-
-### Updating Models
-
-To add or update models, modify the `OPENAI_MODELS` and `ANTHROPIC_MODELS` arrays in `lib/models/config.ts`. Each model requires:
-
-- `label`: Display name
-- `value`: API identifier
-- `description`: Short description
-- `emoji`: Representative emoji
-- `isAvailable`: Whether this model is available
+To add or update models, edit the `OPENAI_MODELS` and `ANTHROPIC_MODELS` arrays in `lib/models/config.ts`.

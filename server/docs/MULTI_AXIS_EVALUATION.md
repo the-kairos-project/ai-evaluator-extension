@@ -71,6 +71,7 @@ The system extracts scores for each axis by looking for specific patterns in the
 - For "General Premise": Looks for `GENERAL_PREMISE_RATING = X`
 - For "ML Skills": Looks for `ML_SKILLS_RATING = X`
 - For "Policy Experience": Looks for `POLICY_EXPERIENCE_RATING = X`
+- For "Software Engineering": Looks for `SOFTWARE_ENGINEERING_RATING = X`
 - For "Understanding of AI Safety": Looks for `AI_SAFETY_RATING = X`
 - For "Path to Impact": Looks for `PATH_TO_IMPACT_RATING = X`
 - For "Research Experience": Looks for `RESEARCH_EXPERIENCE_RATING = X`
@@ -95,7 +96,7 @@ python test_multi_axis_evaluation.py --provider anthropic --api-key your-api-key
 
 The frontend can enable multi-axis evaluation by setting the `use_multi_axis` parameter to `true` in the evaluation request. The scores for each axis are returned in the `scores` array in the response.
 
-To display the multi-axis ratings in the frontend, you can add a dedicated section to show each rating separately, similar to how the LinkedIn data is displayed.
+To display the multi-axis ratings in the frontend, you can add a dedicated section to show each rating separately, similar to how the LinkedIn data is displayed. See the frontend README (`front/README.md`) for UI examples and implementation notes related to displaying evaluation results.
 
 ## Customization
 

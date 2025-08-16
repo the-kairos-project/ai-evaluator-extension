@@ -144,6 +144,6 @@ The plugin returns structured data in the following format:
 
 ## LLM Fallback
 
-The plugin uses LLM fallback when direct extraction fails to extract key sections. The LLM fallback is enabled by default but can be disabled by setting `use_llm_fallback` to `false` in the request parameters.
+The plugin uses LLM fallback when direct extraction fails to extract key sections. In practice, direct extraction via `pdfminer.six` frequently misses structured sections for many resume formats, so the plugin will often fall back to the LLM parser — this is the common path for many resumes. LLM fallback is enabled by default but can be disabled by setting `use_llm_fallback` to `false` in the request parameters.
 
-The LLM is used to parse the raw text extracted from the PDF and fill in missing sections. The LLM provider and model can be configured in the request parameters.
+When fallback is used, the LLM parses the raw text extracted from the PDF and fills in missing sections. You can configure which LLM provider and model are used via the request parameters. If you have a high volume of PDFs and want to reduce API usage, consider preprocessing PDFs (OCR, text normalization) or selectively disabling LLM fallback for known-good sources.

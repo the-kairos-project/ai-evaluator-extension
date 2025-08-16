@@ -27,24 +27,18 @@ Client → API → Semantic Router → Plugin System → Plugins
 
 ## 🛠️ Quick Start
 
-### Local Development
+### Docker Quick Start (recommended)
 
 ```bash
-# Clone and install
+# Clone repository
 git clone https://github.com/yourusername/mcp-server.git
 cd mcp-server
-poetry install
 
-# Configure and run
-cp example.env .env  # Edit with your API keys
-poetry run python -m src.api.main
-```
+# Copy example environment and edit required vars
+cp example.env .env  # Edit with your API keys and credentials
 
-### Docker Deployment
-
-```bash
-# Start all services
-docker-compose up -d
+# Build and start all services (recommended)
+docker-compose up --build -d
 
 # Access services
 # - API: http://localhost:8000
@@ -52,6 +46,19 @@ docker-compose up -d
 # - Prometheus: http://localhost:9091
 # - Grafana: http://localhost:3000 (admin/admin)
 ```
+
+### Local Development (alternative)
+
+If you prefer to run the server locally without Docker:
+
+```bash
+# Install dependencies and run locally
+poetry install
+cp example.env .env  # Edit with your API keys
+poetry run python -m src.api.main
+```
+
+For more deployment and integration details, see the docs in `docs/` (plugins, integrations, multi-axis evaluation).
 
 ## 🔌 Plugin Development
 
