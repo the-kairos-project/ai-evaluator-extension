@@ -1,0 +1,129 @@
+{
+  "dxt_version": "0.1",
+  "name": "linkedin-mcp-server",
+  "display_name": "LinkedIn MCP Server",
+  "version": "1.2.6",
+  "description": "A Model Context Protocol server for LinkedIn profile and company data scraping",
+  "long_description": "# LinkedIn MCP Server\n\nA comprehensive MCP server that enables AI assistants to interact with LinkedIn profiles, companies, and job postings. Features include profile scraping, company analysis, and job details extraction with automatic login handling.\n\n## Features\n- **Profile Scraping**: Extract detailed LinkedIn profile information including work history, education, and skills\n- **Company Analysis**: Get comprehensive company data and insights\n- **Job Details**: Retrieve job posting information using LinkedIn URLs\n- **Session Management**: Automatic login and session handling\n\n## Security & Privacy\n- Credentials stored securely in system keychain\n- Headless browser operation for privacy\n- Automatic session cleanup\n- Respects LinkedIn's rate limiting\n\n⚠️ Use responsibly and in accordance with LinkedIn's Terms of Service.",
+  "author": {
+    "name": "Daniel Sticker",
+    "email": "daniel@sticker.name",
+    "url": "https://daniel.sticker.name/"
+  },
+  "homepage": "https://github.com/stickerdaniel/linkedin-mcp-server",
+  "documentation": "https://github.com/stickerdaniel/linkedin-mcp-server#readme",
+  "support": "https://github.com/stickerdaniel/linkedin-mcp-server/issues",
+  "license": "MIT",
+  "keywords": ["linkedin", "scraping", "mcp", "profiles", "companies", "jobs"],
+  "icon": "assets/icons/linkedin.svg",
+  "screenshots": ["assets/screenshots/screenshot.png"],
+  "server": {
+    "type": "binary",
+    "entry_point": "docker",
+    "mcp_config": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-e", "LINKEDIN_COOKIE=${user_config.linkedin_cookie}",
+        "-e", "LOG_LEVEL=DEBUG",
+        "stickerdaniel/linkedin-mcp-server:1.2.6"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "get_person_profile",
+      "description": "Get detailed information from a LinkedIn profile including work history, education, skills, and connections",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "linkedin_username": {
+            "type": "string",
+            "description": "LinkedIn username (e.g., \"stickerdaniel\", \"john-doe-123456\")"
+          }
+        },
+        "required": ["linkedin_username"]
+      }
+    },
+    {
+      "name": "get_company_profile",
+      "description": "Extract comprehensive company information and details",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "description": "LinkedIn company name (e.g., \"docker\", \"anthropic\", \"microsoft\")"
+          },
+          "get_employees": {
+            "type": "boolean",
+            "description": "Whether to scrape the company's employees (slower)",
+            "default": false
+          }
+        },
+        "required": ["company_name"]
+      }
+    },
+    {
+      "name": "get_job_details",
+      "description": "Retrieve specific job posting details using LinkedIn job IDs",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "LinkedIn job ID (e.g., \"4252026496\", \"3856789012\")"
+          }
+        },
+        "required": ["job_id"]
+      }
+    },
+    {
+      "name": "search_jobs",
+      "description": "Search for jobs with filters like keywords and location",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "search_term": {
+            "type": "string",
+            "description": "Search term for job search (e.g., \"software engineer\", \"product manager\")"
+          }
+        },
+        "required": ["search_term"]
+      }
+    },
+    {
+      "name": "get_recommended_jobs",
+      "description": "Get personalized job recommendations based on your profile",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "close_session",
+      "description": "Properly close browser session and clean up resources",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ],
+  "user_config": {
+    "linkedin_cookie": {
+      "title": "LinkedIn Cookie",
+      "description": "LinkedIn li_at session cookie. Follow the instructions in the README to get it.",
+      "type": "string",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "dxt_version": ">=0.1",
+    "docker_version": ">=20.0.0",
+    "platforms": ["darwin", "linux", "win32"]
+  }
+}
