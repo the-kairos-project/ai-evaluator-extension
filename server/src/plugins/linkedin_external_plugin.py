@@ -27,7 +27,6 @@ from src.core.protocol.mcp_constants import (
 )
 from src.core.exceptions import (
     PluginInitializationError,
-    MCPConnectionError,
     ExternalProcessError,
     ConfigurationError,
     ValidationError,
@@ -174,7 +173,7 @@ class LinkedInExternalPlugin(Plugin):
         else:
             # Running locally - start our own process
             host = DEFAULT_MCP_HOST
-            port = LINKEDIN_MCP_PORT  # Use different port to avoid conflicts
+            port = LINKEDIN_MCP_PORT
             
             if config:
                 host = config.get("external_server_host", host)

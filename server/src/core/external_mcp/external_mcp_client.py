@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from src.utils.logging import get_structured_logger
 
-from .external_mcp_models import MCPToolCall, MCPToolResponse
+from .external_mcp_models import MCPToolResponse
 from ..protocol.sse_parser import SSEParser, SSEParseError
 from ..protocol.mcp_constants import (
     MCP_PROTOCOL_VERSION,
@@ -21,21 +21,14 @@ from ..protocol.mcp_constants import (
     HEALTHY_STATUS_CODES,
     SUCCESS_STATUS_CODES,
     MCP_BASE_ENDPOINT,
-    MCP_MESSAGE_ENDPOINT,
     MCPMethod,
     MCPHeaders,
     CONTENT_TYPE_JSON,
-    ACCEPT_SSE,
     ACCEPT_EVENT_STREAM,
     JSONRPC_VERSION,
     DEFAULT_REQUEST_ID,
 )
-from ..exceptions import (
-    MCPConnectionError,
-    MCPSessionError,
-    MCPProtocolError,
-    MCPTimeoutError,
-)
+from ..exceptions import MCPProtocolError
 
 logger = get_structured_logger(__name__)
 

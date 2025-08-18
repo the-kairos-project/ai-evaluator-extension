@@ -3,12 +3,11 @@
 import ast
 import operator
 import math
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, Union
 from src.utils.logging import get_structured_logger
 
 from src.core.plugin_system.plugin_interface import Plugin, PluginMetadata, PluginRequest, PluginResponse
 from src.core.exceptions import ExpressionValidationError, PluginExecutionError
-from src.utils.logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 

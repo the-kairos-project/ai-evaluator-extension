@@ -5,7 +5,7 @@ This module centralizes all model definitions and makes it easy to update them
 when new models are released or old ones are deprecated.
 """
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
 
