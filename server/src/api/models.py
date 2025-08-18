@@ -1,7 +1,7 @@
 """API request and response models."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 from src.core.plugin_system.plugin_interface import PluginRequest

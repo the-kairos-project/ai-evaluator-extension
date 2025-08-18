@@ -5,7 +5,7 @@ This module handles parsing resume text into structured data.
 """
 
 import re
-from typing import Dict, Any, List, Optional
+from typing import List
 
 from src.utils.logging import get_structured_logger
 

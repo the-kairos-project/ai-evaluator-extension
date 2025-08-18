@@ -2,7 +2,7 @@
 Prompt template system for AI evaluations.
 This module contains all prompt templates and their configurations.
 """
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import Optional
 from pydantic import BaseModel
 
 

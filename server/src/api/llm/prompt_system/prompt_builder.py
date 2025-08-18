@@ -1,7 +1,7 @@
 """
 Prompt builder - handles template variable substitution and prompt construction.
 """
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import List, TypedDict
 
 from .prompt_templates import PromptTemplate, PromptVariables
 

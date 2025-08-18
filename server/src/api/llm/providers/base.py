@@ -30,6 +30,7 @@ class ProviderRequest(BaseModel):
     
     api_key: str
     model: str
+    system: Optional[str] = None
     messages: List[Message]
     max_tokens: Optional[int] = 500
     temperature: Optional[float] = None
@@ -116,16 +117,62 @@ class BaseProvider(ABC):
         Raises:
             HTTPException: If the request fails
         """
-        # Create a ProviderRequest from the payload
+        # Optional normalization: some providers (e.g., Anthropic) expect a
+        # top-level `system` parameter rather than a message with role "system".
+        # Allow per-call override with payload["normalize_system_top_level"].
+        normalize_flag = payload.get("normalize_system_top_level")
+        if normalize_flag is None:
+            # Default: enable normalization for Anthropic only
+            normalize_flag = self.name == "anthropic"
+
+        if normalize_flag:
+            raw_msgs = payload.get("messages", []) or []
+            system_parts = [m.get("content") for m in raw_msgs if str(m.get("role", "")).lower() == "system"]
+            user_msgs = [m for m in raw_msgs if str(m.get("role", "")).lower() != "system"]
+            if system_parts:
+                payload["system"] = "\n".join(system_parts)
+            payload["messages"] = user_msgs
+
+        # Create a ProviderRequest from the (possibly normalized) payload
         request = ProviderRequest(
             api_key=api_key or payload.get("api_key", ""),
             model=payload.get("model", ""),
-            messages=[Message(role=m.get("role"), content=m.get("content")) 
-                     for m in payload.get("messages", [])],
+            system=payload.get("system"),
+            messages=[Message(role=m.get("role"), content=m.get("content"))
+                      for m in payload.get("messages", [])],
             max_tokens=payload.get("max_tokens"),
             temperature=payload.get("temperature"),
             top_p=payload.get("top_p")
         )
+
+        # Strict enforcement for Anthropic: require a top-level `system` field
+        # on the ProviderRequest and disallow messages with role "system".
+        # This prevents ambiguity and ensures Anthropic receives the expected
+        # top-level system prompt rather than relying on fallback scanning.
+        if self.name == "anthropic":
+            # If any message still has role "system", fail validation.
+            system_in_messages = any(
+                str(m.role).lower() == "system" for m in request.messages
+            )
+            if system_in_messages and not request.system:
+                # Both a system message and no top-level system are present.
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Anthropic provider requires a top-level 'system' field on the request. "
+                        "Move any messages with role 'system' into payload['system'] or enable "
+                        "normalization via payload['normalize_system_top_level']=true."
+                    ),
+                )
+            if not request.system:
+                # No top-level system provided.
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Anthropic provider requires a non-empty top-level 'system' field on the request. "
+                        "Please set payload['system'] to your system instructions."
+                    ),
+                )
         
         # Call the provider API
         response = await self.call(request)

@@ -28,8 +28,8 @@ class MultiAxisTemplate(BaseModel):
     axes: List[AxisTemplate] = Field(..., description="List of evaluation axes")
     
     def to_prompt_template(self) -> PromptTemplate:
-        """Convert to a standard PromptTemplate for backward compatibility."""
-        # This only returns the first axis for backward compatibility
+        """Convert to a standard PromptTemplate for single axis compatibility."""
+        # This only returns the first axis for general evaluation
         if not self.axes:
             raise ValueError("MultiAxisTemplate must have at least one axis")
             

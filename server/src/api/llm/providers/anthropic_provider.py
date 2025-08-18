@@ -2,9 +2,9 @@
 Anthropic provider implementation.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from .base import BaseProvider, ProviderRequest, Message
+from .base import BaseProvider, ProviderRequest
 
 
 class AnthropicProvider(BaseProvider):
@@ -43,22 +43,24 @@ class AnthropicProvider(BaseProvider):
         Returns:
             Dict[str, Any]: Prepared request payload
         """
-        # Check if the last message is a system message
-        messages = request.messages
-        last_message_is_system = len(messages) > 0 and messages[-1].role == "system"
-        
         # Prepare request payload
+        messages = request.messages
         payload = {
             "model": request.model,
             "max_tokens": request.max_tokens,
         }
-        
-        # Handle system message specially
-        if last_message_is_system:
-            payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages[:-1]]
-            payload["system"] = messages[-1].content
-        else:
-            payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages]
+
+        # Anthropic Messages API expects a top-level `system` field rather than a
+        # message with role "system". Under strict mode we require callers to
+        # provide `request.system` (BaseProvider.generate enforces this). Use the
+        # provided top-level system and convert remaining messages as-is.
+        if not getattr(request, "system", None):
+            # Defensive: this should be caught earlier in BaseProvider.generate,
+            # but provide a clearer error here if somehow reached.
+            raise ValueError("Anthropic provider requires a top-level 'system' field on ProviderRequest")
+
+        payload["system"] = request.system
+        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages]
         
         # Add optional parameters if provided
         if request.temperature is not None:
