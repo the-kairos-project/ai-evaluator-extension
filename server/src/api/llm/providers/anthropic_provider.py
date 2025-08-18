@@ -2,9 +2,9 @@
 Anthropic provider implementation.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from .base import BaseProvider, ProviderRequest, Message
+from .base import BaseProvider, ProviderRequest
 
 
 class AnthropicProvider(BaseProvider):
@@ -43,22 +43,26 @@ class AnthropicProvider(BaseProvider):
         Returns:
             Dict[str, Any]: Prepared request payload
         """
-        # Check if the last message is a system message
-        messages = request.messages
-        last_message_is_system = len(messages) > 0 and messages[-1].role == "system"
-        
         # Prepare request payload
+        messages = request.messages
         payload = {
             "model": request.model,
             "max_tokens": request.max_tokens,
         }
-        
-        # Handle system message specially
-        if last_message_is_system:
-            payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages[:-1]]
-            payload["system"] = messages[-1].content
-        else:
-            payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages]
+
+        # Anthropic Messages API expects a top-level `system` field rather than a
+        # message with role "system". Detect any system messages (case-insensitive),
+        # remove them from the messages list and set `system` to their concatenated
+        # content. This handles both templates that place the system message first
+        # or last.
+        system_parts = [m.content for m in messages if getattr(m, "role", "").lower() == "system"]
+        user_messages = [m for m in messages if getattr(m, "role", "").lower() != "system"]
+
+        if system_parts:
+            # Join multiple system parts into one top-level system string
+            payload["system"] = "\n".join(system_parts)
+
+        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in user_messages]
         
         # Add optional parameters if provided
         if request.temperature is not None:

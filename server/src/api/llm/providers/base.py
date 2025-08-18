@@ -116,12 +116,28 @@ class BaseProvider(ABC):
         Raises:
             HTTPException: If the request fails
         """
-        # Create a ProviderRequest from the payload
+        # Optional normalization: some providers (e.g., Anthropic) expect a
+        # top-level `system` parameter rather than a message with role "system".
+        # Allow per-call override with payload["normalize_system_top_level"].
+        normalize_flag = payload.get("normalize_system_top_level")
+        if normalize_flag is None:
+            # Default: enable normalization for Anthropic only
+            normalize_flag = self.name == "anthropic"
+
+        if normalize_flag:
+            raw_msgs = payload.get("messages", []) or []
+            system_parts = [m.get("content") for m in raw_msgs if str(m.get("role", "")).lower() == "system"]
+            user_msgs = [m for m in raw_msgs if str(m.get("role", "")).lower() != "system"]
+            if system_parts:
+                payload["system"] = "\n".join(system_parts)
+            payload["messages"] = user_msgs
+
+        # Create a ProviderRequest from the (possibly normalized) payload
         request = ProviderRequest(
             api_key=api_key or payload.get("api_key", ""),
             model=payload.get("model", ""),
-            messages=[Message(role=m.get("role"), content=m.get("content")) 
-                     for m in payload.get("messages", [])],
+            messages=[Message(role=m.get("role"), content=m.get("content"))
+                      for m in payload.get("messages", [])],
             max_tokens=payload.get("max_tokens"),
             temperature=payload.get("temperature"),
             top_p=payload.get("top_p")
