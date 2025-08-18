@@ -51,18 +51,16 @@ class AnthropicProvider(BaseProvider):
         }
 
         # Anthropic Messages API expects a top-level `system` field rather than a
-        # message with role "system". Detect any system messages (case-insensitive),
-        # remove them from the messages list and set `system` to their concatenated
-        # content. This handles both templates that place the system message first
-        # or last.
-        system_parts = [m.content for m in messages if getattr(m, "role", "").lower() == "system"]
-        user_messages = [m for m in messages if getattr(m, "role", "").lower() != "system"]
+        # message with role "system". Under strict mode we require callers to
+        # provide `request.system` (BaseProvider.generate enforces this). Use the
+        # provided top-level system and convert remaining messages as-is.
+        if not getattr(request, "system", None):
+            # Defensive: this should be caught earlier in BaseProvider.generate,
+            # but provide a clearer error here if somehow reached.
+            raise ValueError("Anthropic provider requires a top-level 'system' field on ProviderRequest")
 
-        if system_parts:
-            # Join multiple system parts into one top-level system string
-            payload["system"] = "\n".join(system_parts)
-
-        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in user_messages]
+        payload["system"] = request.system
+        payload["messages"] = [{"role": msg.role, "content": msg.content} for msg in messages]
         
         # Add optional parameters if provided
         if request.temperature is not None:
