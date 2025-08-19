@@ -34,12 +34,25 @@ async def parse_with_llm(
         Dict[str, Any]: Structured resume data from LLM
     """
     try:
+        # Log initial request details
+        logger.debug("Starting LLM parsing", 
+                    text_length=len(text),
+                    provider=provider_name,
+                    model=model_name)
+        
         # Truncate text if too long
         max_text_length = 50000  # Adjust based on model context limits
-        truncated_text = text[:max_text_length] if len(text) > max_text_length else text
+        was_truncated = len(text) > max_text_length
+        truncated_text = text[:max_text_length] if was_truncated else text
+        
+        if was_truncated:
+            logger.warning("PDF text truncated for LLM", 
+                          original_length=len(text),
+                          truncated_length=max_text_length)
         
         # Create prompt for LLM
         prompt = create_llm_prompt(truncated_text, direct_extraction_data)
+        logger.debug("LLM prompt created", prompt_length=len(prompt))
         
         # Get LLM provider with appropriate timeout
         from src.config.settings import settings
@@ -64,33 +77,83 @@ async def parse_with_llm(
         }
         
         # Call LLM
-        logger.info("Calling LLM for resume parsing", provider=provider_name, model=model_name)
+        logger.info("Calling LLM for resume parsing", 
+                   provider=provider_name, 
+                   model=model_name,
+                   max_tokens=request["max_tokens"],
+                   temperature=request["temperature"])
+                   
         # Supply provider API key explicitly (bug fix: missing API key caused fallback to fail)
         api_key = settings.get_llm_api_key(provider_name)
+        
+        # Log if API key is missing
+        if not api_key:
+            logger.error("API key missing for provider", provider=provider_name)
+            raise ValueError(f"No API key configured for provider: {provider_name}")
+            
         response = await provider.generate(request, api_key=api_key)
+        
+        # Log response metadata
+        logger.debug("LLM response received", 
+                    provider=provider_name,
+                    response_keys=list(response.keys()) if response else None)
         
         # Parse the response
         if provider_name == "openai":
             content = response["choices"][0]["message"]["content"]
+            logger.debug("OpenAI response content extracted", 
+                        content_length=len(content),
+                        content_preview=content[:200] + "..." if len(content) > 200 else content)
         else:  # anthropic
             content = response["content"][0]["text"]
             # If we prefilled with "{", the response will start where we left off
             # So we need to prepend the "{" back
             if not content.strip().startswith("{"):
                 content = "{" + content
+                logger.debug("Prepended '{' to Anthropic response")
             
         parsed_data = parse_llm_response(content)
+        
+        # Check if parsing actually succeeded
+        if not parsed_data or not any(parsed_data.values()):
+            logger.error("LLM parsing returned empty data",
+                        raw_response_length=len(content),
+                        raw_response_preview=content[:500] + "..." if len(content) > 500 else content)
+            return {}
+        
+        # Log parsed data structure
+        logger.debug("LLM parsing successful - data structure",
+                    has_personal_info=bool(parsed_data.get("personal_info", {}).get("name")),
+                    education_count=len(parsed_data.get("education", [])),
+                    experience_count=len(parsed_data.get("experience", [])),
+                    skills_count=len(parsed_data.get("skills", [])),
+                    projects_count=len(parsed_data.get("projects", [])),
+                    languages_count=len(parsed_data.get("languages", [])))
+        
         # Normalize parsed data for Unicode and minor unit fixes
         normalized = normalize_resume_data(text, parsed_data)
         
         # Merge with direct extraction data for any fields that might be missing
         merged_data = merge_resume_data(direct_extraction_data, normalized)
         
-        logger.info("LLM parsing successful")
+        logger.info("LLM parsing successful",
+                   total_fields=sum([
+                       bool(merged_data.get("personal_info", {}).get("name")),
+                       len(merged_data.get("education", [])),
+                       len(merged_data.get("experience", [])),
+                       len(merged_data.get("skills", [])),
+                       len(merged_data.get("projects", [])),
+                       len(merged_data.get("languages", []))
+                   ]))
         return merged_data
         
     except Exception as e:
-        logger.error("LLM fallback parsing failed", error=str(e))
+        logger.error("LLM fallback parsing failed", 
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    provider=provider_name,
+                    model=model_name,
+                    exc_info=True)  # This will include the full stack trace
         # Return the direct extraction data if LLM fails
         return direct_extraction_data
 
@@ -178,15 +241,21 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
         Dict[str, Any]: Structured resume data
     """
     try:
+        logger.debug("Starting LLM response parsing", response_length=len(response_text))
+        
         # First, try to extract JSON from code blocks
         json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
         if json_match:
             json_str = json_match.group(1).strip()
+            logger.debug("Found JSON in code block", json_length=len(json_str))
         else:
+            logger.debug("No code block found, looking for raw JSON")
             # Try to find JSON object boundaries
             # Look for the first { and find its matching }
             start_idx = response_text.find('{')
             if start_idx == -1:
+                logger.error("No JSON object found in response",
+                            response_preview=response_text[:200] + "..." if len(response_text) > 200 else response_text)
                 raise ValueError("No JSON object found in response")
             
             # Find the matching closing brace
@@ -203,20 +272,30 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
             
             if brace_count != 0:
                 # If we can't find matching braces, try to parse the whole thing
+                logger.warning("Could not find matching braces", 
+                              unmatched_braces=brace_count,
+                              text_length=len(response_text))
                 json_str = response_text.strip()
             else:
                 json_str = response_text[start_idx:end_idx]
+                logger.debug("Extracted JSON by brace matching", 
+                            json_length=len(json_str),
+                            start_idx=start_idx,
+                            end_idx=end_idx)
         
         # Clean up the JSON string
         json_str = json_str.strip()
         
         # Log a preview if parsing is about to fail
         if not json_str.startswith('{') or not json_str.endswith('}'):
-            logger.warning("JSON extraction may fail", 
+            logger.warning("JSON extraction may fail - invalid boundaries", 
+                          starts_with_brace=json_str.startswith('{'),
+                          ends_with_brace=json_str.endswith('}'),
                           preview=json_str[:100] + "..." if len(json_str) > 100 else json_str)
         
         # Parse JSON
         parsed_data = json.loads(json_str)
+        logger.debug("JSON parsed successfully", keys=list(parsed_data.keys()))
         
         # Basic validation - just check for expected keys and non-empty content
         expected_keys = {"personal_info", "education", "experience", "skills", "projects", "languages"}
@@ -250,12 +329,22 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
         non_empty_fields += len(parsed_data.get("projects", []))
         non_empty_fields += len(parsed_data.get("languages", []))
         
+        # Log detailed content analysis
+        logger.debug("Content analysis",
+                    total_content_length=total_content_length,
+                    non_empty_fields=non_empty_fields,
+                    personal_info_name=parsed_data.get("personal_info", {}).get("name", "NOT_FOUND"),
+                    education_count=len(parsed_data.get("education", [])),
+                    experience_count=len(parsed_data.get("experience", [])),
+                    skills_count=len(parsed_data.get("skills", [])))
+        
         # Fail if total content is too short or too few fields have data
         # A reasonable resume should have at least 100 chars of content and 3+ non-empty fields
         if total_content_length < 100 or non_empty_fields < 3:
             logger.error("Parsed JSON has insufficient content - treating as parsing failure",
                         content_length=total_content_length,
-                        non_empty_fields=non_empty_fields)
+                        non_empty_fields=non_empty_fields,
+                        parsed_data_preview=str(parsed_data)[:500] + "..." if len(str(parsed_data)) > 500 else str(parsed_data))
             raise ValueError(f"LLM returned insufficient resume data (content_length={total_content_length}, fields={non_empty_fields})")
         
         # Return the raw parsed data - no Pydantic validation
@@ -264,13 +353,18 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         logger.error("JSON parsing failed", 
                     error=str(e),
+                    error_line=e.lineno if hasattr(e, 'lineno') else None,
+                    error_column=e.colno if hasattr(e, 'colno') else None,
+                    json_preview=json_str[:500] + "..." if len(json_str) > 500 else json_str,
                     response_preview=response_text[:200] + "..." if len(response_text) > 200 else response_text)
         # Return empty structure if parsing fails
         return {}
     except Exception as e:
         logger.error("Failed to parse LLM response", 
                     error=str(e),
-                    error_type=type(e).__name__)
+                    error_type=type(e).__name__,
+                    json_str_length=len(json_str) if 'json_str' in locals() else None,
+                    response_text_length=len(response_text))
         # Return empty structure if parsing fails
         return {}
 

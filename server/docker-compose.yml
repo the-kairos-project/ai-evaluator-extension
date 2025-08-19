@@ -14,7 +14,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PLUGIN_AUTO_RELOAD=true
       - LINKEDIN_COOKIE=${LINKEDIN_COOKIE}  # Pass LinkedIn cookie to main server
       - LINKEDIN_EXTERNAL_SERVER_URL=http://linkedin-mcp:8080  # URL to LinkedIn service
@@ -44,7 +44,7 @@ services:
       - "8081:8080"  # Expose for external access (optional)
     environment:
       - LINKEDIN_COOKIE=${LINKEDIN_COOKIE}
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     networks:
       - mcp-network
     restart: unless-stopped
