@@ -135,8 +135,20 @@ Parse the following resume text into a structured JSON format that follows this 
     }}
   ],
   "skills": ["string"],
-  "projects": [],
-  "languages": []
+  "projects": [
+    {{
+      "name": "string or null",
+      "description": "string or null",
+      "technologies": ["string"],
+      "url": "string or null"
+    }}
+  ],
+  "languages": [
+    {{
+      "language": "string",
+      "proficiency": "string or null"
+    }}
+  ]
 }}
 ```
 
@@ -213,6 +225,25 @@ def parse_llm_response(response_text: str) -> ResumeData:
         missing_keys = expected_keys - set(parsed_data.keys())
         if missing_keys:
             logger.warning("Parsed JSON missing expected keys", missing_keys=list(missing_keys))
+        
+        # Fix common LLM mistakes - convert string languages to proper objects
+        if "languages" in parsed_data and isinstance(parsed_data["languages"], list):
+            fixed_languages = []
+            for lang in parsed_data["languages"]:
+                if isinstance(lang, str):
+                    # Try to parse "Language (Proficiency)" format
+                    import re
+                    match = re.match(r"^(.*?)\s*\((.*?)\)$", lang)
+                    if match:
+                        fixed_languages.append({
+                            "language": match.group(1).strip(),
+                            "proficiency": match.group(2).strip()
+                        })
+                    else:
+                        fixed_languages.append({"language": lang, "proficiency": None})
+                else:
+                    fixed_languages.append(lang)
+            parsed_data["languages"] = fixed_languages
         
         # Convert to ResumeData
         resume_data = ResumeData.parse_obj(parsed_data)
