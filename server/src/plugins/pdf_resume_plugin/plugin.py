@@ -109,40 +109,66 @@ class PDFResumePlugin(Plugin):
             # Download the PDF
             logger.info("Downloading PDF", url=pdf_url)
             pdf_content = await download_pdf(pdf_url)
-            
-            # Extract text from PDF
-            logger.info("Extracting text from PDF")
-            pdf_text = extract_text_from_pdf(pdf_content)
-            logger.info("Text extraction complete", text_length=len(pdf_text))
-            
-            # Parse resume data using direct extraction
-            logger.info("Parsing resume data using direct extraction")
-            resume_data = parse_resume_text(pdf_text)
-            logger.info("Direct extraction results", 
-                      personal_info=resume_data.personal_info.name is not None,
-                      education_entries=len(resume_data.education),
-                      experience_entries=len(resume_data.experience),
-                      skills_found=len(resume_data.skills))
-            
-            # Check if we need LLM fallback
-            needs_fallback = needs_llm_fallback(resume_data)
-            if use_llm_fallback and needs_fallback:
-                logger.info("Direct extraction incomplete, using LLM fallback EXCLUSIVELY", 
-                           provider=llm_provider, 
-                           model=llm_model)
-                # Create empty resume data for LLM parsing - don't pass the incomplete data
-                # This ensures we don't mix the two extraction methods
+
+            # If LLM-first mode is enabled (default), skip the heavy pdfminer.six
+            # extraction and run the LLM parser first. This uses a lightweight
+            # binary-to-text decode as the LLM input. If callers set
+            # `use_llm_fallback` to False, we preserve the original behavior and
+            # run pdfminer-based extraction first.
+            if use_llm_fallback:
+                logger.info("Using LLM as primary parser (LLM-first mode)", provider=llm_provider, model=llm_model)
+
+                # Lightweight decode of PDF bytes to supply the LLM. This avoids
+                # invoking pdfminer.six on the hot path. The LLM prompt expects
+                # resume-like text; decoding may be imperfect but often sufficient.
+                try:
+                    pdf_text = pdf_content.decode("utf-8", errors="ignore")
+                except Exception:
+                    pdf_text = pdf_content.decode("latin1", errors="ignore")
+
+                # Clean up obviously binary junk
+                pdf_text = pdf_text.replace("\x00", " ")
+
+                # Call LLM parser as primary method
                 empty_resume_data = ResumeData()
                 resume_data = await parse_with_llm(pdf_text, empty_resume_data, llm_provider, llm_model)
-                logger.info("LLM-only parsing completed")
-            elif needs_fallback and not use_llm_fallback:
-                logger.warning("Direct extraction incomplete and LLM fallback disabled", 
-                               missing_sections={
-                                   "personal_info": not bool(resume_data.personal_info.name),
-                                   "education": len(resume_data.education) == 0,
-                                   "experience": len(resume_data.experience) == 0,
-                                   "skills": len(resume_data.skills) == 0,
-                               })
+                logger.info("LLM-first parsing completed")
+                # Mark that LLM was used so later logging/metadata can reference it
+                needs_fallback = True
+            else:
+                # Extract text from PDF using pdfminer.six (original path)
+                logger.info("Extracting text from PDF")
+                pdf_text = extract_text_from_pdf(pdf_content)
+                logger.info("Text extraction complete", text_length=len(pdf_text))
+
+                # Parse resume data using direct extraction
+                logger.info("Parsing resume data using direct extraction")
+                resume_data = parse_resume_text(pdf_text)
+                logger.info("Direct extraction results", 
+                          personal_info=resume_data.personal_info.name is not None,
+                          education_entries=len(resume_data.education),
+                          experience_entries=len(resume_data.experience),
+                          skills_found=len(resume_data.skills))
+
+                # Check if we need LLM fallback
+                needs_fallback = needs_llm_fallback(resume_data)
+                if use_llm_fallback and needs_fallback:
+                    logger.info("Direct extraction incomplete, using LLM fallback EXCLUSIVELY", 
+                               provider=llm_provider, 
+                               model=llm_model)
+                    # Create empty resume data for LLM parsing - don't pass the incomplete data
+                    # This ensures we don't mix the two extraction methods
+                    empty_resume_data = ResumeData()
+                    resume_data = await parse_with_llm(pdf_text, empty_resume_data, llm_provider, llm_model)
+                    logger.info("LLM-only parsing completed")
+                elif needs_fallback and not use_llm_fallback:
+                    logger.warning("Direct extraction incomplete and LLM fallback disabled", 
+                                   missing_sections={
+                                       "personal_info": not bool(resume_data.personal_info.name),
+                                       "education": len(resume_data.education) == 0,
+                                       "experience": len(resume_data.experience) == 0,
+                                       "skills": len(resume_data.skills) == 0,
+                                   })
             
             logger.info("PDF resume parsing complete", 
                        text_length=len(pdf_text) if pdf_text else 0,
