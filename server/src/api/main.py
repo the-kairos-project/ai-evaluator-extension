@@ -64,6 +64,15 @@ async def health():
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests."""
+    # Skip logging for health checks unless explicitly enabled
+    is_health_check = request.url.path in ["/health", "/api/v1/health"]
+    
+    if is_health_check and not settings.log_health_checks:
+        # Skip logging for health checks
+        response = await call_next(request)
+        return response
+    
+    # Log the request
     logger.info(f"Request: {request.method} {request.url.path}")
     response = await call_next(request)
     logger.info(f"Response: {response.status_code}")

@@ -35,12 +35,12 @@ async def process_linkedin_enrichment(
     # Create a performance tracker for the overall enrichment process
     tracker = PerformanceTracker("linkedin_enrichment")
     
-    logger.info(f"Detected LinkedIn profile URL: {source_url}")
+    logger.debug(f"Detected LinkedIn profile URL: {source_url}")
     enrichment_log.append(f"Detected LinkedIn profile URL: {source_url}")
     
     try:
         # Load LinkedIn plugin
-        logger.info("Attempting to load LinkedIn plugin")
+        logger.debug("Attempting to load LinkedIn plugin")
         
         plugin_name = "linkedin_external"  # Name from LinkedInExternalPlugin.get_metadata()
         
@@ -48,7 +48,7 @@ async def process_linkedin_enrichment(
             plugin_load_start = tracker.record_phase_start("plugin_load")
             plugin = await plugin_manager.load_plugin(plugin_name)
             tracker.record_phase_end("plugin_load", plugin_load_start)
-            logger.info("LinkedIn plugin loaded successfully")
+            logger.debug("LinkedIn plugin loaded successfully")
             logger.debug(f"Plugin type: {type(plugin)}")
             logger.debug(f"Plugin initialized: {getattr(plugin, '_initialized', False)}")
             enrichment_log.append("LinkedIn plugin loaded successfully")
@@ -64,7 +64,7 @@ async def process_linkedin_enrichment(
         linkedin_username = source_url
         if "linkedin.com/in/" in source_url:
             linkedin_username = source_url.split("linkedin.com/in/")[1].split("/")[0]
-            logger.info(f"Extracted LinkedIn username: {linkedin_username}")
+            logger.debug(f"Extracted LinkedIn username: {linkedin_username}")
             logger.debug(f"Username extraction: {source_url} -> {linkedin_username}")
             enrichment_log.append(f"Extracted LinkedIn username: {linkedin_username}")
         
@@ -81,11 +81,11 @@ async def process_linkedin_enrichment(
         )
         
         # Execute plugin
-        logger.info(f"Executing LinkedIn plugin for username: {linkedin_username}")
+        logger.debug(f"Executing LinkedIn plugin for username: {linkedin_username}")
         enrichment_log.append(f"Executing LinkedIn plugin for username: {linkedin_username}")
         
         # Log plugin request details
-        logger.info(f"Plugin request: action={plugin_request.action}, parameters={plugin_request.parameters}")
+        logger.debug(f"Plugin request: action={plugin_request.action}, parameters={plugin_request.parameters}")
         logger.debug(f"Full plugin request: {plugin_request}")
         
         try:
@@ -94,12 +94,12 @@ async def process_linkedin_enrichment(
             tracker.record_phase_end("plugin_execute", plugin_exec_start)
             
             # Log plugin response details
-            logger.info(f"Plugin response: status={response.status}, error={response.error if response.error else 'None'}")
-            logger.info(f"Plugin response data type: {type(response.data)}")
+            logger.debug(f"Plugin response: status={response.status}, error={response.error if response.error else 'None'}")
+            logger.debug(f"Plugin response data type: {type(response.data)}")
             logger.debug(f"Plugin response metadata: {response.metadata}")
             
             if response.status == "success" and response.data:
-                logger.info("LinkedIn data received successfully")
+                logger.debug("LinkedIn data received successfully")
                 
                 enrichment_data = {
                     "type": "linkedin",
@@ -109,12 +109,12 @@ async def process_linkedin_enrichment(
                 # Store LinkedIn data in JSON format for including in result
                 try:
                     linkedin_data_json = json.dumps(response.data, indent=2)
-                except Exception as e:
+                except Exception:
                     linkedin_data_json = None
                     
-                logger.info("LinkedIn enrichment successful")
+                logger.debug("LinkedIn enrichment successful")
                 logger.debug(f"LinkedIn data JSON length: {len(linkedin_data_json) if linkedin_data_json else 0}")
-                logger.info(f"LinkedIn data: {linkedin_data_json[:100]}..." if linkedin_data_json else "None")  # Log first 100 chars
+                logger.debug(f"LinkedIn data: {linkedin_data_json[:100]}..." if linkedin_data_json else "None")  # Log first 100 chars
                 enrichment_log.append("LinkedIn enrichment successful")
                 enrichment_log.append(f"Retrieved profile data: {len(str(response.data))} characters")
                 
@@ -188,7 +188,7 @@ async def process_pdf_enrichment(
     # Create a performance tracker for PDF enrichment
     tracker = PerformanceTracker("pdf_enrichment")
     
-    logger.info(f"Detected document URL - Using PDF resume parser: {source_url}")
+    logger.debug(f"Detected document URL - Using PDF resume parser: {source_url}")
     enrichment_log.append(f"Detected document URL - Using PDF resume parser: {source_url}")
     
     # Add URL metadata
@@ -198,7 +198,7 @@ async def process_pdf_enrichment(
     
     try:
         # Load PDF resume plugin - use the correct name from the metadata
-        logger.info("Attempting to load PDF Resume plugin")
+        logger.debug("Attempting to load PDF Resume plugin")
         
         # Use the standard plugin name 
         plugin_name = "pdf_resume_parser"
@@ -207,7 +207,7 @@ async def process_pdf_enrichment(
             plugin_load_start = tracker.record_phase_start("plugin_load")
             plugin = await plugin_manager.load_plugin(plugin_name)
             tracker.record_phase_end("plugin_load", plugin_load_start)
-            logger.info("PDF Resume plugin loaded successfully")
+            logger.debug("PDF Resume plugin loaded successfully")
             enrichment_log.append("PDF Resume plugin loaded successfully")
         except Exception as e:
             error_msg = f"Failed to load PDF plugin: {str(e)}"
@@ -224,12 +224,12 @@ async def process_pdf_enrichment(
         pdf_model = model  # Default to requested model
         if provider.lower() == "anthropic" and settings.pdf_parsing_model_anthropic:
             pdf_model = settings.pdf_parsing_model_anthropic
-            logger.info(f"Using fast Anthropic model for PDF parsing: {pdf_model} (instead of {model})")
+            logger.debug(f"Using fast Anthropic model for PDF parsing: {pdf_model} (instead of {model})")
         elif provider.lower() == "openai" and settings.pdf_parsing_model_openai:
             pdf_model = settings.pdf_parsing_model_openai
-            logger.info(f"Using fast OpenAI model for PDF parsing: {pdf_model} (instead of {model})")
+            logger.debug(f"Using fast OpenAI model for PDF parsing: {pdf_model} (instead of {model})")
         else:
-            logger.info(f"Using evaluation model for PDF parsing: {pdf_model}")
+            logger.debug(f"Using evaluation model for PDF parsing: {pdf_model}")
         
         request_id = f"req_{datetime.utcnow().timestamp()}"
         plugin_request = PluginRequest(
@@ -244,7 +244,7 @@ async def process_pdf_enrichment(
         )
         
         # Execute plugin
-        logger.info(f"Executing PDF Resume plugin for URL: {source_url}")
+        logger.debug(f"Executing PDF Resume plugin for URL: {source_url}")
         enrichment_log.append(f"Executing PDF Resume plugin for URL: {source_url}")
         
         try:
@@ -253,7 +253,7 @@ async def process_pdf_enrichment(
             tracker.record_phase_end("plugin_execute", plugin_exec_start)
             
             if response.status == "success" and response.data:
-                logger.info("PDF resume data received successfully")
+                logger.debug("PDF resume data received successfully")
                 
                 # Store the parsed resume data
                 pdf_data = response.data
@@ -265,12 +265,12 @@ async def process_pdf_enrichment(
                 # Store PDF data in JSON format for including in result
                 try:
                     pdf_data_json = json.dumps(pdf_data, indent=2)
-                    logger.info(f"PDF data JSON successfully created, length: {len(pdf_data_json)}")
+                    logger.debug(f"PDF data JSON successfully created, length: {len(pdf_data_json)}")
                 except Exception as e:
                     logger.error(f"Error converting PDF data to JSON: {str(e)}")
                     pdf_data_json = None
                     
-                logger.info("PDF resume enrichment successful")
+                logger.debug("PDF resume enrichment successful")
                 enrichment_log.append("PDF resume enrichment successful")
                 enrichment_log.append(f"Retrieved resume data: {len(str(response.data))} characters")
                 

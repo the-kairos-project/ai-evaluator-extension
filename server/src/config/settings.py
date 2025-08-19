@@ -76,6 +76,23 @@ class Settings(BaseSettings):
     log_level: str = Field(default="DEBUG", env="LOG_LEVEL")
     log_format: str = Field(default="json", env="LOG_FORMAT")
     log_dir: str = Field(default="logs", env="LOG_DIR")
+    
+    # Verbose logging controls
+    log_plugin_details: bool = Field(
+        default=False, 
+        env="LOG_PLUGIN_DETAILS",
+        description="Log detailed plugin loading/initialization messages"
+    )
+    log_http_details: bool = Field(
+        default=False, 
+        env="LOG_HTTP_DETAILS",
+        description="Log detailed HTTP request/response information"
+    )
+    log_health_checks: bool = Field(
+        default=False, 
+        env="LOG_HEALTH_CHECKS",
+        description="Log health check endpoint calls"
+    )
 
     # Monitoring
     prometheus_enabled: bool = Field(default=True, env="PROMETHEUS_ENABLED")

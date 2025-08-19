@@ -56,7 +56,7 @@ class LinkedInExternalPlugin(Plugin):
         self.server_url: Optional[str] = None
         self.linkedin_cookie: Optional[str] = None
         self.available_tools: List[str] = []
-        logger.info("LinkedIn external plugin instance created")
+        logger.debug("LinkedIn external plugin instance created")
         
         # Available tools from the external server (filtered)
         self.allowed_tools = {
@@ -91,16 +91,16 @@ class LinkedInExternalPlugin(Plugin):
             PluginInitializationError: If server startup or connection fails
             ConfigurationError: If LinkedIn server not found
         """
-        logger.info("Initializing LinkedIn external plugin")
+        logger.debug("Initializing LinkedIn external plugin")
         
         # LinkedIn cookie can come from config, environment, or request
         if config and "linkedin_cookie" in config:
             self.linkedin_cookie = config["linkedin_cookie"]
-            logger.info("Using LinkedIn cookie from config")
+            logger.debug("Using LinkedIn cookie from config")
         else:
             self.linkedin_cookie = os.getenv("LINKEDIN_COOKIE")
             if self.linkedin_cookie:
-                logger.info("Using LinkedIn cookie from environment variable")
+                logger.debug("Using LinkedIn cookie from environment variable")
         
         if not self.linkedin_cookie:
             raise ConfigurationError(
@@ -118,11 +118,11 @@ class LinkedInExternalPlugin(Plugin):
                 timeout=DEFAULT_LINKEDIN_TIMEOUT,
                 max_retries=LINKEDIN_MAX_RETRIES
             )
-            logger.info("Created MCP client", url=self.server_url, timeout=DEFAULT_LINKEDIN_TIMEOUT)
+            logger.debug("Created MCP client", url=self.server_url, timeout=DEFAULT_LINKEDIN_TIMEOUT)
             
             # Enter the context manager to create HTTP session
             await self.mcp_client.__aenter__()
-            logger.info("MCP client HTTP session created")
+            logger.debug("MCP client HTTP session created")
         else:
             raise PluginInitializationError("Server URL not set after setup")
         
@@ -131,12 +131,12 @@ class LinkedInExternalPlugin(Plugin):
             try:
                 # Pre-establish the session to validate the cookie and reduce first-request latency
                 await self.mcp_client.initialize_session()
-                logger.info("LinkedIn MCP client initialized with session")
+                logger.debug("LinkedIn MCP client initialized with session")
             except Exception as e:
                 logger.warning("Failed to initialize MCP session", error=str(e))
-                logger.info("LinkedIn MCP client prepared - will retry on first request")
+                logger.debug("LinkedIn MCP client prepared - will retry on first request")
         else:
-            logger.info("LinkedIn MCP client prepared - no cookie provided yet")
+            logger.debug("LinkedIn MCP client prepared - no cookie provided yet")
         
         # Verify expected tools are available
         if self.mcp_client and hasattr(self.mcp_client, 'session_id') and self.mcp_client.session_id:
@@ -146,7 +146,7 @@ class LinkedInExternalPlugin(Plugin):
                 if not any(tool.get("name") == tool_name for tool in tools):
                     logger.warning("Expected tool not available in external server", tool=tool_name)
         
-        logger.info("LinkedIn External plugin initialized successfully")
+        logger.debug("LinkedIn External plugin initialized successfully")
         self._initialized = True
         
     async def _setup_external_server(self, config: Optional[Dict[str, Any]] = None) -> None:
@@ -166,7 +166,7 @@ class LinkedInExternalPlugin(Plugin):
                     "LINKEDIN_EXTERNAL_SERVER_URL",
                     "LINKEDIN_EXTERNAL_SERVER_URL environment variable not set in Docker."
                 )
-            logger.info("Using external LinkedIn MCP server in Docker network", url=self.server_url)
+            logger.debug("Using external LinkedIn MCP server in Docker network", url=self.server_url)
             
             # In Docker mode, we don't start our own process
             self.process_manager = None
@@ -215,7 +215,7 @@ class LinkedInExternalPlugin(Plugin):
             # Start the server
             try:
                 await self.process_manager.start()
-                logger.info("LinkedIn MCP server started successfully")
+                logger.debug("LinkedIn MCP server started successfully")
             except Exception as e:
                 logger.error("Failed to start LinkedIn MCP server", error=str(e))
                 command_str = f"python {linkedin_server_path} " + " ".join(server_args)
@@ -243,7 +243,7 @@ class LinkedInExternalPlugin(Plugin):
         
         for path in possible_paths:
             if path.exists():
-                logger.info("Found LinkedIn MCP server", path=str(path))
+                logger.debug("Found LinkedIn MCP server", path=str(path))
                 return path.resolve()
         
         logger.error("LinkedIn MCP server not found in expected locations")
@@ -280,7 +280,7 @@ class LinkedInExternalPlugin(Plugin):
                 error="Plugin not initialized. Please check configuration."
             )
         
-        logger.info("LinkedIn plugin received request", 
+        logger.debug("LinkedIn plugin received request", 
                    action=request.action,
                    parameters=request.parameters)
         
@@ -335,7 +335,7 @@ class LinkedInExternalPlugin(Plugin):
                         error="Missing required parameter: linkedin_username"
                     )
                 tool_args = {"linkedin_username": linkedin_username}
-                logger.info(f"Using get_person_profile with username: {linkedin_username}")
+                logger.debug(f"Using get_person_profile with username: {linkedin_username}")
             elif action in ["scrape_profile", "get_profile", "profile"]:
                 profile_input = request.parameters.get("profile") or request.parameters.get("url") or request.parameters.get("username")
                 logger.debug(f"Profile input: {profile_input}")
@@ -415,7 +415,7 @@ class LinkedInExternalPlugin(Plugin):
                     error=f"Tool '{tool_name}' is not allowed. Available tools: {list(self.allowed_tools.keys())}"
                 )
             
-            logger.info("Calling external LinkedIn MCP tool", tool=tool_name, args=tool_args)
+            logger.debug("Calling external LinkedIn MCP tool", tool=tool_name, args=tool_args)
             logger.debug(f"Starting tool call at {time.time()}")
             
             # Delegate to external server for actual LinkedIn API interaction
@@ -471,7 +471,7 @@ class LinkedInExternalPlugin(Plugin):
             # Log the comprehensive performance summary
             tracker.log_summary(logger)
 
-            logger.info(f"LinkedIn plugin returning successful response with data length: {len(str(data)) if data else 0}")
+            logger.debug(f"LinkedIn plugin returning successful response with data length: {len(str(data)) if data else 0}")
             return PluginResponse(
                 request_id=request.request_id,
                 status="success",
@@ -557,7 +557,7 @@ class LinkedInExternalPlugin(Plugin):
         
         Safe to call multiple times.
         """
-        logger.info("Shutting down LinkedIn external plugin")
+        logger.debug("Shutting down LinkedIn external plugin")
         
         if self.mcp_client:
             await self.mcp_client.__aexit__(None, None, None)
@@ -567,7 +567,7 @@ class LinkedInExternalPlugin(Plugin):
             await self.process_manager.stop()
             self.process_manager = None
             
-        logger.info("LinkedIn external plugin shutdown complete")
+        logger.debug("LinkedIn external plugin shutdown complete")
     
     def get_metadata(self) -> PluginMetadata:
         """Return plugin metadata.

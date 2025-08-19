@@ -29,6 +29,8 @@ from ..protocol.mcp_constants import (
     DEFAULT_REQUEST_ID,
 )
 from ..exceptions import MCPProtocolError
+# Delayed import to avoid circular dependency
+# from src.config.settings import settings
 
 logger = get_structured_logger(__name__)
 
@@ -133,12 +135,19 @@ class ExternalMCPClient:
         endpoint = f"{self.server_url}/mcp/"
         
         # Log request details for debugging
-        logger.info(
-            "Sending initialize request",
-            endpoint=endpoint,
-            headers=headers,
-            request_body=init_request
-        )
+        from src.config.settings import settings
+        if settings.log_http_details:
+            logger.info(
+                "Sending initialize request",
+                endpoint=endpoint,
+                headers=headers,
+                request_body=init_request
+            )
+        else:
+            logger.debug(
+                "Sending initialize request",
+                endpoint=endpoint
+            )
         
         async with self.session.post(
             endpoint,
@@ -146,12 +155,19 @@ class ExternalMCPClient:
             headers=headers
         ) as response:
             # Log response details
-            logger.info(
-                "Received response",
-                status=response.status,
-                response_headers=dict(response.headers),
-                request_headers=dict(response.request_info.headers)
-            )
+            from src.config.settings import settings
+            if settings.log_http_details:
+                logger.info(
+                    "Received response",
+                    status=response.status,
+                    response_headers=dict(response.headers),
+                    request_headers=dict(response.request_info.headers)
+                )
+            else:
+                logger.debug(
+                    "Received response",
+                    status=response.status
+                )
             
             if response.status == 200:
                 # Extract session ID from response headers if present
@@ -193,7 +209,7 @@ class ExternalMCPClient:
         
         The session is marked as initialized only after all steps succeed.
         """
-        logger.info("Starting MCP session initialization")
+        logger.debug("Starting MCP session initialization")
         
         init_request = self._build_initialize_request()
         await self._send_initialize_request(init_request)
@@ -201,7 +217,7 @@ class ExternalMCPClient:
         await self._send_initialized_notification()
         
         self.initialized = True
-        logger.info("MCP session initialized successfully", session_id=self.session_id)
+        logger.debug("MCP session initialized successfully", session_id=self.session_id)
     
     async def _send_initialized_notification(self) -> None:
         """Send the initialized notification to complete MCP handshake.
@@ -338,7 +354,7 @@ class ExternalMCPClient:
             if attempt < self.max_retries - 1:
                 # Exponential backoff
                 retry_delay = min(2 ** (attempt - 1), 60)
-                logger.info("Retrying after delay", delay_seconds=retry_delay)
+                logger.debug("Retrying after delay", delay_seconds=retry_delay)
                 await asyncio.sleep(retry_delay)
                 
         return []
@@ -392,7 +408,7 @@ class ExternalMCPClient:
         Returns:
             Optional[MCPToolResponse]: Tool response if successful, None if retry needed
         """
-        logger.info(
+        logger.debug(
             "Calling external MCP tool",
             tool=tool_name,
             arguments=request_data["params"]["arguments"],
@@ -455,7 +471,7 @@ class ExternalMCPClient:
         self,
         tool_name: str,
         arguments: Dict[str, Any],
-        tracker: Optional['PerformanceTracker'] = None
+        tracker: Optional[Any] = None  # PerformanceTracker from utils.timing
     ) -> MCPToolResponse:
         """Call a tool on the external MCP server.
         
@@ -482,7 +498,7 @@ class ExternalMCPClient:
         
         # Try calling the tool with retries
         for attempt in range(1, self.max_retries + 1):
-            logger.info(
+            logger.debug(
                 "Calling external MCP tool",
                 tool=tool_name,
                 attempt=attempt,
@@ -504,7 +520,7 @@ class ExternalMCPClient:
             if attempt < self.max_retries:
                 # Exponential backoff
                 retry_delay = min(2 ** (attempt - 1), 60)
-                logger.info("Retrying after delay", delay_seconds=retry_delay)
+                logger.debug("Retrying after delay", delay_seconds=retry_delay)
                 await asyncio.sleep(retry_delay)
         
         # All attempts failed

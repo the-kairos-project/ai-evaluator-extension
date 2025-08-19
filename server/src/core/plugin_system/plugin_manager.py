@@ -22,6 +22,8 @@ from ..exceptions import (
     PluginValidationError,
     PluginLoadError,
 )
+# Delayed import to avoid circular dependency
+# from src.config.settings import settings
 
 
 logger = get_structured_logger(__name__)
@@ -147,11 +149,19 @@ class PluginManager:
                         
                         # Register plugin
                         self.available_plugins[plugin_name] = obj
-                        logger.debug(
-                            "Discovered plugin from __init__",
-                            name=plugin_name,
-                            class_name=obj.__name__
-                        )
+                        from src.config.settings import settings
+                        if settings.log_plugin_details:
+                            logger.info(
+                                "Discovered plugin from __init__",
+                                name=plugin_name,
+                                class_name=obj.__name__
+                            )
+                        else:
+                            logger.debug(
+                                "Discovered plugin from __init__",
+                                name=plugin_name,
+                                class_name=obj.__name__
+                            )
                     except Exception as e:
                         logger.error(
                             "Failed to get plugin metadata from __init__",
@@ -296,7 +306,11 @@ class PluginManager:
         
         # Check if plugin is in available plugins
         if plugin_name in self.available_plugins:
-            logger.debug(f"Loading plugin from available plugins: {plugin_name}")
+            from src.config.settings import settings
+            if settings.log_plugin_details:
+                logger.info(f"Loading plugin from available plugins: {plugin_name}")
+            else:
+                logger.debug(f"Loading plugin from available plugins: {plugin_name}")
             # Get the plugin class directly from available_plugins
             plugin_class = self.available_plugins[plugin_name]
         else:
@@ -318,7 +332,11 @@ class PluginManager:
             # Initialize the plugin
             try:
                 await plugin.initialize(config)
-                logger.debug(f"Plugin '{plugin_name}' initialized successfully")
+                from src.config.settings import settings
+                if settings.log_plugin_details:
+                    logger.info(f"Plugin '{plugin_name}' initialized successfully")
+                else:
+                    logger.debug(f"Plugin '{plugin_name}' initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize plugin '{plugin_name}': {str(e)}", exc_info=True)
                 raise PluginInitializationError(plugin_name, str(e))
