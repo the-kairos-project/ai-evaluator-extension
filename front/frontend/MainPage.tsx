@@ -31,7 +31,7 @@ import {
   getFailedApplicants,
   getFailedApplicantsCount,
 } from '../lib/failedApplicants';
-import { PROVIDER_ICONS, formatModelName } from '../lib/models/config';
+import { PROVIDER_ICONS, formatModelName, DEFAULT_OPENAI_MODEL } from '../lib/models/config';
 import { type Preset, upsertPreset, useSelectedPreset } from '../lib/preset';
 import { retryFailedApplicants } from '../lib/retryFailedApplicants';
 import { FailedApplicantsModal } from './components/FailedApplicantsModal';
@@ -116,7 +116,7 @@ const quickPrecheck = async (
 const getCurrentModel = (): string => {
   const selectedProvider = (globalConfig.get('selectedModel') as string) || 'openai';
   if (selectedProvider === 'openai') {
-    return (globalConfig.get('openAiModel') as string) || 'gpt-4o';
+    return (globalConfig.get('openAiModel') as string) || DEFAULT_OPENAI_MODEL;
   }
   return (globalConfig.get('anthropicModel') as string) || 'claude-3-5-sonnet-20241022';
 };

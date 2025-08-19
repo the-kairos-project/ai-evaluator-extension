@@ -76,6 +76,10 @@ async def parse_with_llm(
             content = response["choices"][0]["message"]["content"]
         else:  # anthropic
             content = response["content"][0]["text"]
+            # If we prefilled with "{", the response will start where we left off
+            # So we need to prepend the "{" back
+            if not content.strip().startswith("{"):
+                content = "{" + content
             
         parsed_data = parse_llm_response(content)
         # Normalize parsed data for Unicode and minor unit fixes

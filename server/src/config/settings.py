@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # OpenAI Configuration (for backward compatibility and when using OpenAI)
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4-turbo-preview", env="OPENAI_MODEL")
+    openai_model: str = Field(default="gpt-5-mini", env="OPENAI_MODEL")
     openai_temperature: float = Field(default=0.0, env="OPENAI_TEMPERATURE")
     openai_max_tokens: int = Field(default=4096, env="OPENAI_MAX_TOKENS")
     openai_timeout: int = Field(default=60, env="OPENAI_TIMEOUT")

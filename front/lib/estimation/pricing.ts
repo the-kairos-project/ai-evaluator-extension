@@ -3,6 +3,7 @@
 
 export interface ModelPricing {
   inputTokensPerK: number; // Cost per 1K input tokens (USD)
+  cachedInputTokensPerK?: number; // Cost per 1K cached input tokens (USD), if supported
   outputTokensPerK: number; // Cost per 1K output tokens (USD)
   currency: string;
   lastUpdated: string; // For tracking when prices were last verified
@@ -24,17 +25,23 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     currency: 'USD',
     lastUpdated: '2025-05-25',
   },
-  'gpt-4o': {
-    inputTokensPerK: 0.0025, // $2.50 / 1M tokens
-    outputTokensPerK: 0.01, // $10.00 / 1M tokens
+  // (Removed gpt-4o and gpt-4o-mini — no longer supported in UI)
+  'gpt-5': {
+    // GPT-5 pricing (official)
+    // Provided as USD per 1M tokens in the product docs; convert to per-1K values
+    inputTokensPerK: 0.00125, // $1.250 / 1M tokens
+    cachedInputTokensPerK: 0.000125, // $0.125 / 1M tokens (cached input)
+    outputTokensPerK: 0.01, // $10.000 / 1M tokens
     currency: 'USD',
-    lastUpdated: '2025-05-25',
+    lastUpdated: '2025-08-19',
   },
-  'gpt-4o-mini': {
-    inputTokensPerK: 0.00015, // $0.15 / 1M tokens
-    outputTokensPerK: 0.0006, // $0.60 / 1M tokens
+  'gpt-5-mini': {
+    // GPT-5 mini pricing (official)
+    inputTokensPerK: 0.00025, // $0.250 / 1M tokens
+    cachedInputTokensPerK: 0.000025, // $0.025 / 1M tokens (cached input)
+    outputTokensPerK: 0.002, // $2.000 / 1M tokens
     currency: 'USD',
-    lastUpdated: '2025-05-25',
+    lastUpdated: '2025-08-19',
   },
 
   // Anthropic Models
