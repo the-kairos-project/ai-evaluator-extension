@@ -10,20 +10,18 @@ import re
 from src.utils.logging import get_structured_logger
 
 from src.api.llm.providers import ProviderFactory
-from src.config.settings import settings
 import unicodedata
 from typing import Any, Dict
-from .models import ResumeData
 
 logger = get_structured_logger(__name__)
 
 
 async def parse_with_llm(
     text: str, 
-    direct_extraction_data: ResumeData,
+    direct_extraction_data: Dict[str, Any],
     provider_name: str,
     model_name: str
-) -> ResumeData:
+) -> Dict[str, Any]:
     """Use LLM to parse resume when direct extraction fails.
     
     Args:
@@ -33,7 +31,7 @@ async def parse_with_llm(
         model_name: LLM model to use
         
     Returns:
-        ResumeData: Structured resume data from LLM
+        Dict[str, Any]: Structured resume data from LLM
     """
     try:
         # Truncate text if too long
@@ -97,7 +95,7 @@ async def parse_with_llm(
         return direct_extraction_data
 
 
-def create_llm_prompt(text: str, direct_extraction_data: ResumeData) -> str:
+def create_llm_prompt(text: str, direct_extraction_data: Dict[str, Any]) -> str:
     """Create prompt for LLM resume parsing.
     
     Args:
@@ -170,14 +168,14 @@ RESUME TEXT:
     return prompt
 
 
-def parse_llm_response(response_text: str) -> ResumeData:
+def parse_llm_response(response_text: str) -> Dict[str, Any]:
     """Parse LLM response into structured data.
     
     Args:
         response_text: Text response from LLM
         
     Returns:
-        ResumeData: Structured resume data
+        Dict[str, Any]: Structured resume data
     """
     try:
         # First, try to extract JSON from code blocks
@@ -220,50 +218,64 @@ def parse_llm_response(response_text: str) -> ResumeData:
         # Parse JSON
         parsed_data = json.loads(json_str)
         
-        # Validate the structure has expected keys
+        # Basic validation - just check for expected keys and non-empty content
         expected_keys = {"personal_info", "education", "experience", "skills", "projects", "languages"}
         missing_keys = expected_keys - set(parsed_data.keys())
         if missing_keys:
             logger.warning("Parsed JSON missing expected keys", missing_keys=list(missing_keys))
         
-        # Fix common LLM mistakes - convert string languages to proper objects
-        if "languages" in parsed_data and isinstance(parsed_data["languages"], list):
-            fixed_languages = []
-            for lang in parsed_data["languages"]:
-                if isinstance(lang, str):
-                    # Try to parse "Language (Proficiency)" format
-                    import re
-                    match = re.match(r"^(.*?)\s*\((.*?)\)$", lang)
-                    if match:
-                        fixed_languages.append({
-                            "language": match.group(1).strip(),
-                            "proficiency": match.group(2).strip()
-                        })
-                    else:
-                        fixed_languages.append({"language": lang, "proficiency": None})
-                else:
-                    fixed_languages.append(lang)
-            parsed_data["languages"] = fixed_languages
+        # Check if we have meaningful content by measuring total data length
+        def get_content_length(data):
+            """Recursively calculate the total content length in the data structure."""
+            if isinstance(data, str):
+                return len(data.strip())
+            elif isinstance(data, dict):
+                return sum(get_content_length(v) for v in data.values() if v is not None)
+            elif isinstance(data, list):
+                return sum(get_content_length(item) for item in data)
+            else:
+                return 0
         
-        # Convert to ResumeData
-        resume_data = ResumeData.parse_obj(parsed_data)
-        return resume_data
+        total_content_length = get_content_length(parsed_data)
+        
+        # Also count non-empty fields
+        non_empty_fields = 0
+        if parsed_data.get("personal_info", {}).get("name"):
+            non_empty_fields += 1
+        if parsed_data.get("personal_info", {}).get("email"):
+            non_empty_fields += 1
+        non_empty_fields += len(parsed_data.get("education", []))
+        non_empty_fields += len(parsed_data.get("experience", []))
+        non_empty_fields += len(parsed_data.get("skills", []))
+        non_empty_fields += len(parsed_data.get("projects", []))
+        non_empty_fields += len(parsed_data.get("languages", []))
+        
+        # Fail if total content is too short or too few fields have data
+        # A reasonable resume should have at least 100 chars of content and 3+ non-empty fields
+        if total_content_length < 100 or non_empty_fields < 3:
+            logger.error("Parsed JSON has insufficient content - treating as parsing failure",
+                        content_length=total_content_length,
+                        non_empty_fields=non_empty_fields)
+            raise ValueError(f"LLM returned insufficient resume data (content_length={total_content_length}, fields={non_empty_fields})")
+        
+        # Return the raw parsed data - no Pydantic validation
+        return parsed_data
             
     except json.JSONDecodeError as e:
         logger.error("JSON parsing failed", 
                     error=str(e),
                     response_preview=response_text[:200] + "..." if len(response_text) > 200 else response_text)
         # Return empty structure if parsing fails
-        return ResumeData()
+        return {}
     except Exception as e:
         logger.error("Failed to parse LLM response", 
                     error=str(e),
                     error_type=type(e).__name__)
         # Return empty structure if parsing fails
-        return ResumeData()
+        return {}
 
 
-def merge_resume_data(direct_data: ResumeData, llm_data: ResumeData) -> ResumeData:
+def merge_resume_data(direct_data: Dict[str, Any], llm_data: Dict[str, Any]) -> Dict[str, Any]:
     """Merge direct extraction data with LLM data.
     
     Args:
@@ -271,7 +283,7 @@ def merge_resume_data(direct_data: ResumeData, llm_data: ResumeData) -> ResumeDa
         llm_data: Data from LLM
         
     Returns:
-        ResumeData: Parsed data from LLM
+        Dict[str, Any]: Parsed data from LLM
     """
     # Since we're now passing an empty ResumeData object by design,
     # we simply return the LLM data directly to avoid any mixing
@@ -338,16 +350,20 @@ def _maybe_fix_percent_units(original_text: str, parsed: Dict[str, Any]) -> None
         exp["responsibilities"] = fixed
 
 
-def normalize_resume_data(original_text: str, data: ResumeData) -> ResumeData:
+def normalize_resume_data(original_text: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize Unicode and minor unit formatting without removing diacritics.
     Also conservatively add % symbol when the original text contains the same number followed by %.
     """
-    try:
-        as_dict = data.dict()
-    except Exception:
-        return data
+    # If it's already a dict, use it directly. Otherwise try to convert
+    if isinstance(data, dict):
+        as_dict = data
+    else:
+        try:
+            as_dict = data.dict()
+        except Exception:
+            return data
     # Unicode/whitespace normalization across the structure
     normalized = _walk_and_normalize(as_dict)
     # Minor percent fix based on original text context
     _maybe_fix_percent_units(original_text, normalized.get("parsed_resume", normalized))
-    return ResumeData.parse_obj(normalized)
+    return normalized
