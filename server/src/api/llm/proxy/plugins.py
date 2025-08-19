@@ -237,7 +237,7 @@ async def process_pdf_enrichment(
             action="parse_resume",
             parameters={
                 "pdf_url": source_url,
-                "use_llm_fallback": True,
+                "parsing_mode": "llm_first",
                 "llm_provider": provider,
                 "llm_model": pdf_model  # Use the fast model
             }

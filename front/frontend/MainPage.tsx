@@ -151,6 +151,32 @@ const renderPreviewText = (
   return `Found ${numberOfApplicants} records, and ${numberOfEvaluationCriteria} evaluation criteria for a total of ${numberOfItems} items to process. Estimated cost: £${costEstimateGbp} (rough estimate). To cancel, please close the entire browser tab.`;
 };
 
+// Helper function to format processing rate
+export const formatProcessingRate = (
+  processedCount: number,
+  startTime: number | null
+): string => {
+  if (!startTime || processedCount === 0) return '';
+  
+  const elapsedMs = Date.now() - startTime;
+  const elapsedMinutes = elapsedMs / (1000 * 60);
+  
+  if (elapsedMinutes < 0.5) {
+    // Too early to calculate meaningful rate
+    return '';
+  }
+  
+  const appsPerMinute = processedCount / elapsedMinutes;
+  
+  if (appsPerMinute >= 2) {
+    return ` (${appsPerMinute.toFixed(1)} apps/min)`;
+  } else {
+    // Use apps per hour for slower rates
+    const appsPerHour = appsPerMinute * 60;
+    return ` (${appsPerHour.toFixed(0)} apps/hour)`;
+  }
+};
+
 export const MainPage = () => {
   const preset = useSelectedPreset();
   const showGuidedHelp = useGuidedMode();
@@ -165,6 +191,7 @@ export const MainPage = () => {
   const [failedCount, setFailedCount] = useState(getFailedApplicantsCount());
   const [showFailedModal, setShowFailedModal] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
   /**
    * Process applicants in batches to prevent browser overload
    * Works with the existing LLM API concurrency limits
@@ -174,7 +201,8 @@ export const MainPage = () => {
     preset: Preset,
     evaluationTable: Table,
     setProgress: (updater: (prev: number) => number) => void,
-    setResult: (result: string) => void
+    setResult: (result: string) => void,
+    startTime: number | null
   ): Promise<{ successes: number; failures: number }> {
     // Dynamic batch sizing based on field count to optimize concurrency
     const fieldCount = preset.evaluationFields.length;
@@ -225,7 +253,7 @@ export const MainPage = () => {
             batchStart + BATCH_SIZE,
             applicantsToProcess.length
           )} ` +
-          `of ${applicantsToProcess.length})`
+          `of ${applicantsToProcess.length})${formatProcessingRate(processedCount, startTime)}`
       );
 
       // Get evaluation promises for this batch only
@@ -289,7 +317,7 @@ export const MainPage = () => {
           try {
             setResult(
               `Processing batch ${batchNumber} of ${totalBatches} - ` +
-                `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...`
+                `Evaluating applicant ${applicantNumber} of ${applicantsToProcess.length}...${formatProcessingRate(processedCount + completedPromises, startTime)}`
             );
 
             Logger.debug(
@@ -314,7 +342,7 @@ export const MainPage = () => {
 
             setResult(
               `Processing batch ${batchNumber} of ${totalBatches} - ` +
-                `Saving applicant ${applicantNumber} to Airtable...`
+                `Saving applicant ${applicantNumber} to Airtable...${formatProcessingRate(processedCount + completedPromises, startTime)}`
             );
 
             // Write to Airtable with retry
@@ -522,7 +550,7 @@ export const MainPage = () => {
       // Update the user with progress after each batch
       Logger.debug('🖥️ Updating UI with batch completion message...');
       setResult(
-        `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ${totalSuccesses} successes, ${totalFailures} failures so far. ${batchMessage}`
+        `Processed ${processedCount} of ${applicantsToProcess.length} applicants. ${totalSuccesses} successes, ${totalFailures} failures so far. ${batchMessage}${formatProcessingRate(processedCount, startTime)}`
       );
       Logger.debug('🖥️ UI updated. About to continue to next batch or finish.');
 
@@ -686,7 +714,8 @@ export const MainPage = () => {
       preset,
       evaluationTable,
       setProgress,
-      setResult
+      setResult,
+      processingStartTime
     );
 
     return {
@@ -755,6 +784,7 @@ export const MainPage = () => {
     setRunning(true);
     setProgress(0);
     setResult(null);
+    setProcessingStartTime(Date.now());
     Logger.debug('Running preset', preset);
     
     // Log enrichment configuration details
@@ -783,6 +813,7 @@ export const MainPage = () => {
       setResult(errorMessage);
     } finally {
       setRunning(false);
+      setProcessingStartTime(null);
     }
   };
 
@@ -792,6 +823,7 @@ export const MainPage = () => {
     setIsRetrying(true);
     setProgress(0);
     setResult(null);
+    const retryStartTime = Date.now();
 
     try {
       const failedApplicants = getFailedApplicants();
@@ -801,11 +833,12 @@ export const MainPage = () => {
         applicantTable,
         evaluationTable,
         setProgress,
-        setResult
+        setResult,
+        retryStartTime
       );
 
       setResult(
-        `Retry complete: ${retryResult.successes} successes, ${retryResult.failures} failures`
+        `Retry complete: ${retryResult.successes} successes, ${retryResult.failures} failures${formatProcessingRate(retryResult.successes + retryResult.failures, retryStartTime)}`
       );
 
       // Update failed count

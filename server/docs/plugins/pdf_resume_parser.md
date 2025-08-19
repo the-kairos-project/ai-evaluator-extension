@@ -1,8 +1,9 @@
 # PDF Resume Parser Plugin
 
-This plugin extracts text and structured data from PDF resumes. It uses a dual approach:
-1. First tries direct extraction with pdfminer.six
-2. Falls back to LLM-based parsing if direct extraction misses key sections
+This plugin extracts text and structured data from PDF resumes. It supports three parsing modes:
+1. **llm_first** (default): Uses LLM as primary parser with lightweight PDF decode
+2. **direct_first**: Tries direct extraction first, falls back to LLM if extraction fails
+3. **direct_only**: Only uses direct extraction, returns empty data if it fails
 
 ## Features
 
@@ -50,7 +51,7 @@ request = PluginRequest(
     action="parse_resume",
     parameters={
         "pdf_url": "https://example.com/resume.pdf",
-        "use_llm_fallback": True,
+        "parsing_mode": "llm_first",
         "llm_provider": "anthropic",
         "llm_model": "claude-3-5-sonnet-20241022"
     }
@@ -77,10 +78,14 @@ Use the test script to test the plugin with a sample resume:
 python test_pdf_resume_parser.py --pdf-url https://example.com/resume.pdf
 ```
 
-To disable LLM fallback:
+To use different parsing modes:
 
 ```bash
-python test_pdf_resume_parser.py --pdf-url https://example.com/resume.pdf --no-llm-fallback
+# Use direct extraction only (no LLM)
+python test_pdf_resume_parser.py --pdf-url https://example.com/resume.pdf --parsing-mode direct_only
+
+# Try direct extraction first, then fall back to LLM
+python test_pdf_resume_parser.py --pdf-url https://example.com/resume.pdf --parsing-mode direct_first
 ```
 
 ## Output Format
@@ -142,8 +147,16 @@ The plugin returns structured data in the following format:
 }
 ```
 
-## LLM Fallback
+## Parsing Modes
 
-The plugin uses LLM fallback when direct extraction fails to extract key sections. In practice, direct extraction via `pdfminer.six` frequently misses structured sections for many resume formats, so the plugin will often fall back to the LLM parser — this is the common path for many resumes. LLM fallback is enabled by default but can be disabled by setting `use_llm_fallback` to `false` in the request parameters.
+The plugin supports three parsing modes controlled by the `parsing_mode` parameter:
 
-When fallback is used, the LLM parses the raw text extracted from the PDF and fills in missing sections. You can configure which LLM provider and model are used via the request parameters. If you have a high volume of PDFs and want to reduce API usage, consider preprocessing PDFs (OCR, text normalization) or selectively disabling LLM fallback for known-good sources.
+- **llm_first** (default): Uses LLM as the primary parser. This mode skips the heavy pdfminer.six extraction and uses a lightweight binary-to-text decode as LLM input. This is the recommended mode for most use cases as it provides the best accuracy.
+
+- **direct_first**: Tries direct extraction with pdfminer.six first. If key sections are missing (e.g., no name, education, or experience), it falls back to LLM parsing. This provides a balance between accuracy and API usage.
+
+- **direct_only**: Only uses direct extraction via pdfminer.six. If extraction fails or returns incomplete data, the plugin returns empty fields. Use this mode when you want to avoid LLM API calls entirely.
+
+In practice, direct extraction via `pdfminer.six` frequently misses structured sections for many resume formats due to complex layouts, non-standard formatting, or poor PDF quality. The `llm_first` mode (default) provides the most reliable results.
+
+You can configure which LLM provider and model are used via the request parameters. If you have a high volume of PDFs and want to reduce API usage, consider using `direct_first` mode or preprocessing PDFs (OCR, text normalization).

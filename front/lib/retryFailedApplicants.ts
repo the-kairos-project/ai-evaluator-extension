@@ -8,6 +8,7 @@ import { type SetProgress, evaluateApplicants } from './evaluateApplicants';
 import { type FailedApplicant, removeFailedApplicants } from './failedApplicants';
 import type { Preset } from './preset';
 import { Logger } from './logger';
+import { formatProcessingRate } from '../frontend/MainPage';
 
 /**
  * Retry failed applicants by fetching their records and re-processing
@@ -18,7 +19,8 @@ export const retryFailedApplicants = async (
   applicantTable: Table,
   evaluationTable: Table,
   setProgress: SetProgress,
-  setResult: (result: string) => void
+  setResult: (result: string) => void,
+  startTime?: number
 ): Promise<{ successes: number; failures: number; newFailures: FailedApplicant[] }> => {
   if (failedApplicants.length === 0) {
     return { successes: 0, failures: 0, newFailures: [] };
@@ -81,10 +83,10 @@ export const retryFailedApplicants = async (
   const results = await Promise.allSettled(
     evaluationPromises.map(async (evaluationPromise, index) => {
       const record = records[index];
-      const startTime = Date.now();
+      const applicantStartTime = Date.now();
 
       try {
-        setResult(`Retrying applicant ${index + 1} of ${records.length}...`);
+        setResult(`Retrying applicant ${index + 1} of ${records.length}...${formatProcessingRate(index, startTime)}`);
 
         // Add timeout for retry as well (90 seconds per applicant)
         const RETRY_TIMEOUT = 90 * 1000;
@@ -101,12 +103,12 @@ export const retryFailedApplicants = async (
         // Save to Airtable
         await pRetry(() => evaluationTable.createRecordAsync(evaluation));
 
-        const totalTime = Date.now() - startTime;
+        const totalTime = Date.now() - applicantStartTime;
         Logger.info(`✅ Successfully retried applicant ${record.id} in ${totalTime}ms`);
 
         return { success: true, recordId: record.id, totalTime };
       } catch (error) {
-        const totalTime = Date.now() - startTime;
+        const totalTime = Date.now() - applicantStartTime;
         Logger.error(
           `❌ Failed to retry applicant ${record.id} after ${totalTime}ms: ${error.message}`
         );

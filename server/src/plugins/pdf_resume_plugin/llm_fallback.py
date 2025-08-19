@@ -48,13 +48,19 @@ async def parse_with_llm(
         timeout = settings.llm_timeout  # Use general LLM timeout for PDF parsing
         provider = ProviderFactory.get_provider(provider_name, timeout=float(timeout))
         
-        # Create request. For Anthropic, place system as a separate param by putting it last.
+        # Create request with proper message order and prefilling
+        messages = [
+            {"role": "system", "content": "You are an expert resume parser. Output ONLY valid JSON. No explanations, no text before or after the JSON."},
+            {"role": "user", "content": prompt}
+        ]
+        
+        # Add prefilling for Anthropic to force JSON output
+        if provider_name == "anthropic":
+            messages.append({"role": "assistant", "content": "{"})
+        
         request = {
             "model": model_name,
-            "messages": [
-                {"role": "user", "content": prompt},
-                {"role": "system", "content": "You are an expert resume parser. Extract structured data into strict JSON only, no extra text."},
-            ],
+            "messages": messages,
             "temperature": 0.1,
             "max_tokens": 2000,
         }
@@ -140,11 +146,10 @@ STRICT REQUIREMENTS:
 7. Include ONLY information explicitly present in the text. If information is not present, use null (for scalars) or an empty array (for lists). Do NOT guess or infer.
 8. Use only the keys defined in the schema above. Do not add extra keys.
 9. LIMIT TOTAL OUTPUT to 1500 words maximum
+10. Return ONLY the JSON object. No explanations, no additional text.
 
 RESUME TEXT:
 {text}
-
-JSON OUTPUT:
 """
     return prompt
 
@@ -159,23 +164,66 @@ def parse_llm_response(response_text: str) -> ResumeData:
         ResumeData: Structured resume data
     """
     try:
-        # Extract JSON from response
+        # First, try to extract JSON from code blocks
         json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
         if json_match:
-            json_str = json_match.group(1)
+            json_str = json_match.group(1).strip()
         else:
-            # Try to find JSON without code block markers
-            json_str = response_text
+            # Try to find JSON object boundaries
+            # Look for the first { and find its matching }
+            start_idx = response_text.find('{')
+            if start_idx == -1:
+                raise ValueError("No JSON object found in response")
+            
+            # Find the matching closing brace
+            brace_count = 0
+            end_idx = start_idx
+            for i in range(start_idx, len(response_text)):
+                if response_text[i] == '{':
+                    brace_count += 1
+                elif response_text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+            
+            if brace_count != 0:
+                # If we can't find matching braces, try to parse the whole thing
+                json_str = response_text.strip()
+            else:
+                json_str = response_text[start_idx:end_idx]
+        
+        # Clean up the JSON string
+        json_str = json_str.strip()
+        
+        # Log a preview if parsing is about to fail
+        if not json_str.startswith('{') or not json_str.endswith('}'):
+            logger.warning("JSON extraction may fail", 
+                          preview=json_str[:100] + "..." if len(json_str) > 100 else json_str)
         
         # Parse JSON
         parsed_data = json.loads(json_str)
+        
+        # Validate the structure has expected keys
+        expected_keys = {"personal_info", "education", "experience", "skills", "projects", "languages"}
+        missing_keys = expected_keys - set(parsed_data.keys())
+        if missing_keys:
+            logger.warning("Parsed JSON missing expected keys", missing_keys=list(missing_keys))
         
         # Convert to ResumeData
         resume_data = ResumeData.parse_obj(parsed_data)
         return resume_data
             
+    except json.JSONDecodeError as e:
+        logger.error("JSON parsing failed", 
+                    error=str(e),
+                    response_preview=response_text[:200] + "..." if len(response_text) > 200 else response_text)
+        # Return empty structure if parsing fails
+        return ResumeData()
     except Exception as e:
-        logger.error("Failed to parse LLM response", error=str(e))
+        logger.error("Failed to parse LLM response", 
+                    error=str(e),
+                    error_type=type(e).__name__)
         # Return empty structure if parsing fails
         return ResumeData()
 

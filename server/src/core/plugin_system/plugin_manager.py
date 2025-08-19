@@ -147,7 +147,7 @@ class PluginManager:
                         
                         # Register plugin
                         self.available_plugins[plugin_name] = obj
-                        logger.info(
+                        logger.debug(
                             "Discovered plugin from __init__",
                             name=plugin_name,
                             class_name=obj.__name__
@@ -196,12 +196,17 @@ class PluginManager:
                     exc_info=True
                 )
                 
-        # Log discovered plugins
-        logger.info(
-            "Plugin discovery completed",
-            total_plugins=len(self.available_plugins),
-            available_plugins=list(self.available_plugins.keys())
-        )
+        # Log discovered plugins summary
+        if self.available_plugins:
+            logger.info(
+                f"Plugin discovery completed: {len(self.available_plugins)} plugins available"
+            )
+            logger.debug(
+                "Available plugins",
+                plugins=list(self.available_plugins.keys())
+            )
+        else:
+            logger.warning("No plugins discovered")
     
     def _load_plugin_module(self, file_path: Path, module_name_override: str = None) -> None:
         """Load a plugin module and register its Plugin classes.
@@ -218,7 +223,7 @@ class PluginManager:
             try:
                 logger.debug(f"Trying to import {module_name} directly")
                 module = importlib.import_module(module_name)
-                logger.info(f"Successfully imported {module_name} directly")
+                logger.debug(f"Successfully imported {module_name} directly")
             except ImportError as e:
                 # If direct import fails, try spec-based loading
                 logger.debug(f"Direct import failed, trying spec-based loading: {str(e)}")
@@ -257,7 +262,7 @@ class PluginManager:
                         plugin_name = metadata.name
                         
                         self.available_plugins[plugin_name] = obj
-                        logger.info(
+                        logger.debug(
                             "Discovered plugin",
                             name=plugin_name,
                             class_name=obj.__name__,
@@ -286,41 +291,41 @@ class PluginManager:
         """
         # Check if the plugin is already loaded
         if plugin_name in self.loaded_plugins:
-            logger.info(f"Plugin '{plugin_name}' already loaded")
+            logger.debug(f"Plugin '{plugin_name}' already loaded, returning cached instance")
             return self.loaded_plugins[plugin_name]
         
         # Check if plugin is in available plugins
         if plugin_name in self.available_plugins:
-            logger.info(f"Loading plugin from available plugins: {plugin_name}")
+            logger.debug(f"Loading plugin from available plugins: {plugin_name}")
             # Get the plugin class directly from available_plugins
             plugin_class = self.available_plugins[plugin_name]
         else:
             # Detailed logging of what's available
             logger.error(f"Plugin '{plugin_name}' not found in available plugins")
-            logger.info(f"Available plugins: {list(self.available_plugins.keys())}")
+            logger.debug(f"Available plugins: {list(self.available_plugins.keys())}")
             raise PluginNotFoundError(plugin_name)
         
-        logger.info(f"Loading plugin: {plugin_name}")
+        logger.debug(f"Loading plugin: {plugin_name}")
         
         try:
             # Use the plugin class we already have
-            logger.info(f"Found plugin class: {plugin_class.__name__}")
+            logger.debug(f"Found plugin class: {plugin_class.__name__}")
             
             # Create an instance of the plugin
             plugin = plugin_class()
-            logger.info(f"Created plugin instance: {plugin_class.__name__}")
+            logger.debug(f"Created plugin instance: {plugin_class.__name__}")
             
             # Initialize the plugin
             try:
                 await plugin.initialize(config)
-                logger.info(f"Plugin '{plugin_name}' initialized successfully")
+                logger.debug(f"Plugin '{plugin_name}' initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize plugin '{plugin_name}': {str(e)}", exc_info=True)
                 raise PluginInitializationError(plugin_name, str(e))
             
             # Store the plugin instance
             self.loaded_plugins[plugin_name] = plugin
-            logger.info(f"Plugin '{plugin_name}' loaded successfully")
+            logger.info(f"Plugin {plugin_name} ready")
             
             return plugin
             

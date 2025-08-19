@@ -67,12 +67,11 @@ class PerformanceTracker:
         """Get the total elapsed time since tracker creation."""
         return round(time.time() - self.start_time, 2)
         
-    def log_summary(self, logger: logging.Logger, level: int = logging.INFO) -> None:
-        """Log a single-line summary of all collected metrics.
+    def log_summary(self, logger: logging.Logger) -> None:
+        """Log a single-line summary of all collected metrics at INFO level.
         
         Args:
             logger: Logger instance to use
-            level: Logging level (default: INFO)
         """
         total_time = self.get_total_time()
         
@@ -97,7 +96,9 @@ class PerformanceTracker:
             message_parts.append(metadata_str)
             
         message = " | ".join(message_parts)
-        logger.log(level, message)
+        
+        # Always log at INFO level as requested
+        logger.info(message)
 
 
 @asynccontextmanager

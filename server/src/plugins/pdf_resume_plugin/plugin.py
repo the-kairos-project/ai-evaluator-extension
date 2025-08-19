@@ -33,7 +33,7 @@ class PDFResumePlugin(Plugin):
                 "pdf_url": "URL to the PDF resume to parse"
             },
             optional_params={
-                "use_llm_fallback": "Whether to use LLM fallback if direct extraction fails (boolean, default: True)",
+                "parsing_mode": "Parsing mode: 'llm_first' (default), 'direct_first', or 'direct_only' (string)",
                 "llm_provider": "LLM provider to use for fallback (string, default: 'anthropic')",
                 "llm_model": "LLM model to use for fallback (string, default: 'claude-3-5-sonnet-20241022')"
             },
@@ -43,8 +43,12 @@ class PDFResumePlugin(Plugin):
                     "parameters": {"pdf_url": "https://example.com/resume.pdf"}
                 },
                 {
-                    "query": "Parse resume without LLM fallback",
-                    "parameters": {"pdf_url": "https://example.com/resume.pdf", "use_llm_fallback": False}
+                    "query": "Parse resume using direct extraction only",
+                    "parameters": {"pdf_url": "https://example.com/resume.pdf", "parsing_mode": "direct_only"}
+                },
+                {
+                    "query": "Parse resume with direct extraction and LLM fallback",
+                    "parameters": {"pdf_url": "https://example.com/resume.pdf", "parsing_mode": "direct_first"}
                 }
             ]
         )
@@ -88,13 +92,13 @@ class PDFResumePlugin(Plugin):
         try:
             # Extract parameters
             pdf_url = request.parameters.get("pdf_url")
-            use_llm_fallback = request.parameters.get("use_llm_fallback", True)
+            parsing_mode = request.parameters.get("parsing_mode", "llm_first")
             llm_provider = request.parameters.get("llm_provider", self._llm_provider)
             llm_model = request.parameters.get("llm_model", self._llm_model)
             
             logger.info("PDF Resume plugin execution started", 
                        pdf_url=pdf_url, 
-                       use_llm_fallback=use_llm_fallback,
+                       parsing_mode=parsing_mode,
                        llm_provider=llm_provider,
                        llm_model=llm_model)
             
@@ -110,12 +114,8 @@ class PDFResumePlugin(Plugin):
             logger.info("Downloading PDF", url=pdf_url)
             pdf_content = await download_pdf(pdf_url)
 
-            # If LLM-first mode is enabled (default), skip the heavy pdfminer.six
-            # extraction and run the LLM parser first. This uses a lightweight
-            # binary-to-text decode as the LLM input. If callers set
-            # `use_llm_fallback` to False, we preserve the original behavior and
-            # run pdfminer-based extraction first.
-            if use_llm_fallback:
+            # Handle different parsing modes
+            if parsing_mode == "llm_first":
                 logger.info("Using LLM as primary parser (LLM-first mode)", provider=llm_provider, model=llm_model)
 
                 # Lightweight decode of PDF bytes to supply the LLM. This avoids
@@ -135,7 +135,8 @@ class PDFResumePlugin(Plugin):
                 logger.info("LLM-first parsing completed")
                 # Mark that LLM was used so later logging/metadata can reference it
                 needs_fallback = True
-            else:
+                
+            elif parsing_mode == "direct_only" or parsing_mode == "direct_first":
                 # Extract text from PDF using pdfminer.six (original path)
                 logger.info("Extracting text from PDF")
                 pdf_text = extract_text_from_pdf(pdf_content)
@@ -152,23 +153,33 @@ class PDFResumePlugin(Plugin):
 
                 # Check if we need LLM fallback
                 needs_fallback = needs_llm_fallback(resume_data)
-                if use_llm_fallback and needs_fallback:
-                    logger.info("Direct extraction incomplete, using LLM fallback EXCLUSIVELY", 
+                
+                if parsing_mode == "direct_first" and needs_fallback:
+                    logger.info("Direct extraction incomplete, using LLM fallback", 
                                provider=llm_provider, 
                                model=llm_model)
                     # Create empty resume data for LLM parsing - don't pass the incomplete data
                     # This ensures we don't mix the two extraction methods
                     empty_resume_data = ResumeData()
                     resume_data = await parse_with_llm(pdf_text, empty_resume_data, llm_provider, llm_model)
-                    logger.info("LLM-only parsing completed")
-                elif needs_fallback and not use_llm_fallback:
-                    logger.warning("Direct extraction incomplete and LLM fallback disabled", 
+                    logger.info("LLM fallback parsing completed")
+                elif parsing_mode == "direct_only" and needs_fallback:
+                    logger.warning("Direct extraction incomplete and LLM disabled (direct_only mode)", 
                                    missing_sections={
                                        "personal_info": not bool(resume_data.personal_info.name),
                                        "education": len(resume_data.education) == 0,
                                        "experience": len(resume_data.experience) == 0,
                                        "skills": len(resume_data.skills) == 0,
                                    })
+            
+            else:
+                # Invalid parsing mode
+                logger.error("Invalid parsing mode", parsing_mode=parsing_mode)
+                return PluginResponse(
+                    request_id=request.request_id,
+                    status="error",
+                    error=f"Invalid parsing mode: {parsing_mode}. Must be 'llm_first', 'direct_first', or 'direct_only'"
+                )
             
             logger.info("PDF resume parsing complete", 
                        text_length=len(pdf_text) if pdf_text else 0,
@@ -177,7 +188,7 @@ class PDFResumePlugin(Plugin):
                        education_entries=len(resume_data.education),
                        experience_entries=len(resume_data.experience),
                        skills_found=len(resume_data.skills),
-                       used_llm_fallback=use_llm_fallback and needs_fallback)
+                       used_llm=needs_fallback)
             
             response_data = {
                 "parsed_resume": resume_data.dict(),
@@ -194,7 +205,8 @@ class PDFResumePlugin(Plugin):
                 metadata={
                     "plugin": "pdf_resume_parser",
                     "version": self._metadata.version,
-                    "used_llm_fallback": use_llm_fallback and needs_fallback
+                    "parsing_mode": parsing_mode,
+                    "used_llm": needs_fallback
                 }
             )
             
