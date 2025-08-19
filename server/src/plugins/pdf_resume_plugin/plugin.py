@@ -119,16 +119,10 @@ class PDFResumePlugin(Plugin):
             if parsing_mode == "llm_first":
                 logger.info("Using LLM as primary parser (LLM-first mode)", provider=llm_provider, model=llm_model)
 
-                # Lightweight decode of PDF bytes to supply the LLM. This avoids
-                # invoking pdfminer.six on the hot path. The LLM prompt expects
-                # resume-like text; decoding may be imperfect but often sufficient.
-                try:
-                    pdf_text = pdf_content.decode("utf-8", errors="ignore")
-                except Exception:
-                    pdf_text = pdf_content.decode("latin1", errors="ignore")
-
-                # Clean up obviously binary junk
-                pdf_text = pdf_text.replace("\x00", " ")
+                # Extract text from PDF properly using pdfminer
+                logger.info("Extracting text from PDF for LLM parsing")
+                pdf_text = extract_text_from_pdf(pdf_content)
+                logger.info("Text extraction complete", text_length=len(pdf_text))
 
                 # Call LLM parser as primary method
                 empty_resume_data = {}
