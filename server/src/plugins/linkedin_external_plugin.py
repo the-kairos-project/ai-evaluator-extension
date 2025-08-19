@@ -462,7 +462,36 @@ class LinkedInExternalPlugin(Plugin):
             
             tracker.record_phase_end("data_extraction", data_extraction_start)
             
-            # Add final metadata
+            # Check if LinkedIn returned empty data (authentication failure)
+            is_empty_response = False
+            if isinstance(data, dict):
+                # Check if all main fields are empty/null
+                if (data.get("name") is None and 
+                    not data.get("about", []) and 
+                    not data.get("experiences", []) and 
+                    not data.get("educations", []) and 
+                    not data.get("skills", [])):
+                    is_empty_response = True
+                    logger.error("LinkedIn returned empty profile data - likely authentication failure",
+                               data_preview=str(data)[:200])
+            
+            if is_empty_response:
+                error_msg = "LinkedIn authentication failed - profile data is empty. The LinkedIn cookie may be expired or invalid."
+                tracker.add_metadata(
+                    status="error",
+                    error="auth_failure",
+                    data_size=len(str(data)) if data else 0
+                )
+                tracker.log_summary(logger)
+                
+                return PluginResponse(
+                    request_id=request.request_id,
+                    status="error",
+                    error=error_msg,
+                    data={"error": error_msg, "empty_response": data}
+                )
+            
+            # Add final metadata for successful response
             tracker.add_metadata(
                 status="success",
                 data_size=len(str(data)) if data else 0

@@ -553,7 +553,7 @@ class PluginManager:
         """
         await self.shutdown_all_plugins()
         
-        if hasattr(self, 'observer') and self.observer.is_alive():
+        if hasattr(self, 'observer') and self.observer and self.observer.is_alive():
             self.observer.stop()
             self.observer.join()
             logger.info("File watcher stopped")

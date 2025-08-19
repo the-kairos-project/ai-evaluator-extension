@@ -179,7 +179,6 @@ class PDFResumePlugin(Plugin):
             logger.info("PDF resume parsing complete",
                        text_length=len(pdf_text) if pdf_text else 0,
                        data_fields=list(resume_data.keys()) if resume_data else [],
-                       personal_info=resume_data.get('personal_info', {}).get('name', 'Not found'),
                        education_entries=len(resume_data.get('education', [])),
                        experience_entries=len(resume_data.get('experience', [])),
                        skills_found=len(resume_data.get('skills', [])),
@@ -255,7 +254,7 @@ def needs_llm_fallback(resume_data) -> bool:
         if not resume_data.skills:
             return True
 
-        # Check if experience entries have missing titles or responsibilities
+        # Check if experience entries have missing roles or descriptions
         for exp in resume_data.experience:
             if not exp.title or not exp.responsibilities:
                 return True
@@ -277,9 +276,9 @@ def needs_llm_fallback(resume_data) -> bool:
         if not resume_data.get('skills', []):
             return True
 
-        # Check if experience entries have missing titles or responsibilities
+        # Check if experience entries have missing roles or descriptions
         for exp in resume_data.get('experience', []):
-            if not exp.get('title') or not exp.get('responsibilities'):
+            if not exp.get('role') or not exp.get('description'):
                 return True
 
     # If we have at least basic info in all key sections, no need for fallback

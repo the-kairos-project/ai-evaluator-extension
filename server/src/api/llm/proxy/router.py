@@ -152,6 +152,7 @@ async def evaluate_applicant(
         logger.info(f"Plugin enrichment requested for URL: {request.source_url}")
         enrichment_log.append(f"Enrichment requested for URL: {request.source_url}")
         
+        plugin_manager = None
         try:
             plugin_manager = PluginManager()
             logger.info("Initializing plugin manager")
@@ -225,6 +226,12 @@ async def evaluate_applicant(
             logger.error(error_msg, exc_info=True)  # Include stack trace
             logger.debug(f"Plugin enrichment exception type: {type(exc).__name__}")
             enrichment_log.append(error_msg)
+        finally:
+            # Always clean up the plugin manager to avoid resource leaks
+            if plugin_manager:
+                logger.debug("Shutting down plugin manager")
+                await plugin_manager.shutdown()
+                logger.debug("Plugin manager shutdown complete")
     
     try:
         enrichment_text = None

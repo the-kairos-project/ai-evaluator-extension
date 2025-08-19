@@ -627,6 +627,12 @@ const convertToPlainRecord = (
 const stringifyApplicantForLLM = (applicant: Record<string, string>): string => {
   return Object.entries(applicant)
     .filter(([, value]) => value)
+    // TODO: This is a quick fix to filter out duplicate field IDs. The proper solution would be
+    // to refactor convertToPlainRecord to avoid storing both field IDs and questionNames,
+    // while maintaining a separate lookup mechanism for field IDs when needed for dependencies
+    // and enrichment fields.
+    // Filter out entries where key matches Airtable field ID pattern
+    .filter(([key]) => !key.match(/^fld[A-Za-z0-9]+$/))
     .map(([key, value]) => `### ${key}\n\n${value}`)
     .join('\n\n');
 };

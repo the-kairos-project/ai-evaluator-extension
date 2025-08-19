@@ -17,91 +17,91 @@ logger = get_structured_logger(__name__)
 
 
 async def parse_with_llm(
-    text: str, 
+    text: str,
     direct_extraction_data: Dict[str, Any],
     provider_name: str,
     model_name: str
 ) -> Dict[str, Any]:
     """Use LLM to parse resume when direct extraction fails.
-    
+
     Args:
         text: Raw text from PDF
         direct_extraction_data: Data from direct extraction (may be incomplete)
         provider_name: LLM provider to use
         model_name: LLM model to use
-        
+
     Returns:
         Dict[str, Any]: Structured resume data from LLM
     """
     try:
         # Log initial request details
-        logger.debug("Starting LLM parsing", 
+        logger.debug("Starting LLM parsing",
                     text_length=len(text),
                     provider=provider_name,
                     model=model_name)
-        
+
         # Truncate text if too long
         max_text_length = 50000  # Adjust based on model context limits
         was_truncated = len(text) > max_text_length
         truncated_text = text[:max_text_length] if was_truncated else text
-        
+
         if was_truncated:
-            logger.warning("PDF text truncated for LLM", 
+            logger.warning("PDF text truncated for LLM",
                           original_length=len(text),
                           truncated_length=max_text_length)
-        
+
         # Create prompt for LLM
         prompt = create_llm_prompt(truncated_text, direct_extraction_data)
         logger.debug("LLM prompt created", prompt_length=len(prompt))
-        
+
         # Get LLM provider with appropriate timeout
         from src.config.settings import settings
         timeout = settings.llm_timeout  # Use general LLM timeout for PDF parsing
         provider = ProviderFactory.get_provider(provider_name, timeout=float(timeout))
-        
+
         # Create request with proper message order and prefilling
         messages = [
             {"role": "system", "content": "You are an expert resume parser. Output ONLY valid JSON. No explanations, no text before or after the JSON."},
             {"role": "user", "content": prompt}
         ]
-        
+
         # Add prefilling for Anthropic to force JSON output
         if provider_name == "anthropic":
             messages.append({"role": "assistant", "content": "{"})
-        
+
         request = {
             "model": model_name,
             "messages": messages,
             "temperature": 0.1,
-            "max_tokens": 2000,
+            "max_tokens": 8000,  # Increased to allow complete resume extraction
         }
-        
+
         # Call LLM
-        logger.info("Calling LLM for resume parsing", 
-                   provider=provider_name, 
+        logger.info("Calling LLM for resume parsing",
+                   provider=provider_name,
                    model=model_name,
                    max_tokens=request["max_tokens"],
                    temperature=request["temperature"])
-                   
+
         # Supply provider API key explicitly (bug fix: missing API key caused fallback to fail)
         api_key = settings.get_llm_api_key(provider_name)
-        
+
         # Log if API key is missing
         if not api_key:
             logger.error("API key missing for provider", provider=provider_name)
             raise ValueError(f"No API key configured for provider: {provider_name}")
-            
+
         response = await provider.generate(request, api_key=api_key)
-        
+
         # Log response metadata
-        logger.debug("LLM response received", 
+        logger.debug("LLM response received",
                     provider=provider_name,
                     response_keys=list(response.keys()) if response else None)
-        
+
         # Parse the response
         if provider_name == "openai":
             content = response["choices"][0]["message"]["content"]
-            logger.debug("OpenAI response content extracted", 
+            logger.debug("OpenAI response content extracted",
                         content_length=len(content),
                         content_preview=content[:200] + "..." if len(content) > 200 else content)
         else:  # anthropic
@@ -111,16 +111,16 @@ async def parse_with_llm(
             if not content.strip().startswith("{"):
                 content = "{" + content
                 logger.debug("Prepended '{' to Anthropic response")
-            
+
         parsed_data = parse_llm_response(content)
-        
+
         # Check if parsing actually succeeded
         if not parsed_data or not any(parsed_data.values()):
             logger.error("LLM parsing returned empty data",
                         raw_response_length=len(content),
                         raw_response_preview=content[:500] + "..." if len(content) > 500 else content)
             return {}
-        
+
         # Log parsed data structure
         logger.debug("LLM parsing successful - data structure",
                     has_personal_info=bool(parsed_data.get("personal_info", {}).get("name")),
@@ -128,14 +128,14 @@ async def parse_with_llm(
                     experience_count=len(parsed_data.get("experience", [])),
                     skills_count=len(parsed_data.get("skills", [])),
                     projects_count=len(parsed_data.get("projects", [])),
-                    languages_count=len(parsed_data.get("languages", [])))
-        
+                    additional_sections_count=len(parsed_data.get("additional_sections", {})))
+
         # Normalize parsed data for Unicode and minor unit fixes
         normalized = normalize_resume_data(text, parsed_data)
-        
+
         # Merge with direct extraction data for any fields that might be missing
         merged_data = merge_resume_data(direct_extraction_data, normalized)
-        
+
         logger.info("LLM parsing successful",
                    total_fields=sum([
                        bool(merged_data.get("personal_info", {}).get("name")),
@@ -143,12 +143,18 @@ async def parse_with_llm(
                        len(merged_data.get("experience", [])),
                        len(merged_data.get("skills", [])),
                        len(merged_data.get("projects", [])),
-                       len(merged_data.get("languages", []))
+                       len(merged_data.get("additional_sections", {}))
                    ]))
-        return merged_data
         
+        # Remove personal_info to maintain anonymity in evaluation
+        if "personal_info" in merged_data:
+            logger.debug("Removing personal_info to maintain evaluation anonymity")
+            del merged_data["personal_info"]
+            
+        return merged_data
+
     except Exception as e:
-        logger.error("LLM fallback parsing failed", 
+        logger.error("LLM fallback parsing failed",
                     error=str(e),
                     error_type=type(e).__name__,
                     provider=provider_name,
@@ -160,70 +166,84 @@ async def parse_with_llm(
 
 def create_llm_prompt(text: str, direct_extraction_data: Dict[str, Any]) -> str:
     """Create prompt for LLM resume parsing.
-    
+
     Args:
         text: Raw text from PDF
         direct_extraction_data: Data from direct extraction (now empty by design)
-        
+
     Returns:
         str: Prompt for LLM
     """
     prompt = f"""
-Parse the following resume text into a structured JSON format that follows this exact schema:
+Parse the following resume text into a structured JSON format that follows this schema:
 
 ```json
 {{
   "personal_info": {{
-    "name": "string or null",
-    "email": "string or null",
-    "phone": "string or null",
-    "location": "string or null"
+    "type": "object",
+    "properties": {{
+      "name": {{"type": ["string", "null"]}},
+      "email": {{"type": ["string", "null"]}},
+      "phone": {{"type": ["string", "null"]}},
+      "location": {{"type": ["string", "null"]}}
+    }}
   }},
-  "education": [
-    {{
-      "institution": "string",
-      "degree": "string or null",
-      "period": "string or null",
-      "details": "string or null"
+  "education": {{
+    "type": "array",
+    "items": {{
+      "type": "object",
+      "properties": {{
+        "institution": {{"type": "string"}},
+        "degree": {{"type": ["string", "null"]}},
+        "field": {{"type": ["string", "null"]}},
+        "period": {{"type": ["string", "null"]}},
+        "description": {{"type": ["string", "null"]}}
+      }}
     }}
-  ],
-  "experience": [
-    {{
-      "company": "string",
-      "title": "string or null",
-      "period": "string or null",
-      "responsibilities": ["string"]
+  }},
+  "experience": {{
+    "type": "array",
+    "items": {{
+      "type": "object",
+      "properties": {{
+        "organization": {{"type": "string"}},
+        "role": {{"type": ["string", "null"]}},
+        "period": {{"type": ["string", "null"]}},
+        "location": {{"type": ["string", "null"]}},
+        "description": {{"type": ["string", "null"]}}
+      }}
     }}
-  ],
-  "skills": ["string"],
-  "projects": [
-    {{
-      "name": "string or null",
-      "description": "string or null",
-      "technologies": ["string"],
-      "url": "string or null"
+  }},
+  "skills": {{
+    "type": "array",
+    "items": {{"type": "string"}}
+  }},
+  "projects": {{
+    "type": "array",
+    "items": {{
+      "type": "object",
+      "properties": {{
+        "name": {{"type": ["string", "null"]}},
+        "description": {{"type": ["string", "null"]}},
+        "technologies": {{"type": "array", "items": {{"type": "string"}}}},
+        "url": {{"type": ["string", "null"]}}
+      }}
     }}
-  ],
-  "languages": [
-    {{
-      "language": "string",
-      "proficiency": "string or null"
-    }}
-  ]
+  }},
+  "additional_sections": {{
+    "type": "object",
+    "description": "Any other resume sections like a cover letter, publications, awards, certifications, languages, etc."
+  }}
 }}
 ```
 
-STRICT REQUIREMENTS:
-1. Output MUST be valid, parseable JSON. Return ONLY the JSON object with no additional text.
-2. Preserve Unicode accents/diacritics exactly (UTF-8). Do NOT replace characters like á, é, í, ó, ú, ü, ñ, ç.
-3. Periods must be extracted from the same section as company/title. Recognize and preserve Present/Currently (e.g., "May 2025 – Present"). Accept formats like "Jan. 2024 – Present", "July 2023 – Oct. 2023", or "2021–2023".
-4. Retain symbols and units (%, $, k, M) exactly as written.
-5. Include ONLY 2–3 most recent education entries, 3–4 most recent experience entries, and 5–10 key skills.
-6. Keep responsibility descriptions very brief (1–2 sentences max).
-7. Include ONLY information explicitly present in the text. If information is not present, use null (for scalars) or an empty array (for lists). Do NOT guess or infer.
-8. Use only the keys defined in the schema above. Do not add extra keys.
-9. LIMIT TOTAL OUTPUT to 1500 words maximum
-10. Return ONLY the JSON object. No explanations, no additional text.
+REQUIREMENTS:
+1. Output valid JSON only, no additional text.
+2. Extract complete information from the resume without summarizing.
+3. Clean up formatting issues and convert content to Markdown where appropriate for better readability.
+4. Include information only if explicitly present in the text (use null or empty arrays otherwise).
+5. Do not infer or add information not in the original text.
+6. Use the main keys defined above. Put any sections that don't fit (like publications, awards, certifications, languages, etc.) in "additional_sections" as key-value pairs.
 
 RESUME TEXT:
 {text}
@@ -233,16 +253,16 @@ RESUME TEXT:
 
 def parse_llm_response(response_text: str) -> Dict[str, Any]:
     """Parse LLM response into structured data.
-    
+
     Args:
         response_text: Text response from LLM
-        
+
     Returns:
         Dict[str, Any]: Structured resume data
     """
     try:
         logger.debug("Starting LLM response parsing", response_length=len(response_text))
-        
+
         # First, try to extract JSON from code blocks
         json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
         if json_match:
@@ -257,7 +277,7 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
                 logger.error("No JSON object found in response",
                             response_preview=response_text[:200] + "..." if len(response_text) > 200 else response_text)
                 raise ValueError("No JSON object found in response")
-            
+
             # Find the matching closing brace
             brace_count = 0
             end_idx = start_idx
@@ -269,40 +289,40 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
                     if brace_count == 0:
                         end_idx = i + 1
                         break
-            
+
             if brace_count != 0:
                 # If we can't find matching braces, try to parse the whole thing
-                logger.warning("Could not find matching braces", 
+                logger.warning("Could not find matching braces",
                               unmatched_braces=brace_count,
                               text_length=len(response_text))
                 json_str = response_text.strip()
             else:
                 json_str = response_text[start_idx:end_idx]
-                logger.debug("Extracted JSON by brace matching", 
+                logger.debug("Extracted JSON by brace matching",
                             json_length=len(json_str),
                             start_idx=start_idx,
                             end_idx=end_idx)
-        
+
         # Clean up the JSON string
         json_str = json_str.strip()
-        
+
         # Log a preview if parsing is about to fail
         if not json_str.startswith('{') or not json_str.endswith('}'):
-            logger.warning("JSON extraction may fail - invalid boundaries", 
+            logger.warning("JSON extraction may fail - invalid boundaries",
                           starts_with_brace=json_str.startswith('{'),
                           ends_with_brace=json_str.endswith('}'),
                           preview=json_str[:100] + "..." if len(json_str) > 100 else json_str)
-        
+
         # Parse JSON
         parsed_data = json.loads(json_str)
         logger.debug("JSON parsed successfully", keys=list(parsed_data.keys()))
-        
+
         # Basic validation - just check for expected keys and non-empty content
-        expected_keys = {"personal_info", "education", "experience", "skills", "projects", "languages"}
+        expected_keys = {"personal_info", "education", "experience", "skills", "projects", "additional_sections"}
         missing_keys = expected_keys - set(parsed_data.keys())
         if missing_keys:
             logger.warning("Parsed JSON missing expected keys", missing_keys=list(missing_keys))
-        
+
         # Check if we have meaningful content by measuring total data length
         def get_content_length(data):
             """Recursively calculate the total content length in the data structure."""
@@ -314,9 +334,9 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
                 return sum(get_content_length(item) for item in data)
             else:
                 return 0
-        
+
         total_content_length = get_content_length(parsed_data)
-        
+
         # Also count non-empty fields
         non_empty_fields = 0
         if parsed_data.get("personal_info", {}).get("name"):
@@ -327,8 +347,8 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
         non_empty_fields += len(parsed_data.get("experience", []))
         non_empty_fields += len(parsed_data.get("skills", []))
         non_empty_fields += len(parsed_data.get("projects", []))
-        non_empty_fields += len(parsed_data.get("languages", []))
-        
+        non_empty_fields += len(parsed_data.get("additional_sections", {}))
+
         # Log detailed content analysis
         logger.debug("Content analysis",
                     total_content_length=total_content_length,
@@ -337,7 +357,7 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
                     education_count=len(parsed_data.get("education", [])),
                     experience_count=len(parsed_data.get("experience", [])),
                     skills_count=len(parsed_data.get("skills", [])))
-        
+
         # Fail if total content is too short or too few fields have data
         # A reasonable resume should have at least 100 chars of content and 3+ non-empty fields
         if total_content_length < 100 or non_empty_fields < 3:
@@ -346,12 +366,12 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
                         non_empty_fields=non_empty_fields,
                         parsed_data_preview=str(parsed_data)[:500] + "..." if len(str(parsed_data)) > 500 else str(parsed_data))
             raise ValueError(f"LLM returned insufficient resume data (content_length={total_content_length}, fields={non_empty_fields})")
-        
+
         # Return the raw parsed data - no Pydantic validation
         return parsed_data
-            
+
     except json.JSONDecodeError as e:
-        logger.error("JSON parsing failed", 
+        logger.error("JSON parsing failed",
                     error=str(e),
                     error_line=e.lineno if hasattr(e, 'lineno') else None,
                     error_column=e.colno if hasattr(e, 'colno') else None,
@@ -360,7 +380,7 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
         # Return empty structure if parsing fails
         return {}
     except Exception as e:
-        logger.error("Failed to parse LLM response", 
+        logger.error("Failed to parse LLM response",
                     error=str(e),
                     error_type=type(e).__name__,
                     json_str_length=len(json_str) if 'json_str' in locals() else None,
@@ -371,11 +391,11 @@ def parse_llm_response(response_text: str) -> Dict[str, Any]:
 
 def merge_resume_data(direct_data: Dict[str, Any], llm_data: Dict[str, Any]) -> Dict[str, Any]:
     """Merge direct extraction data with LLM data.
-    
+
     Args:
         direct_data: Data from direct extraction (now always empty by design)
         llm_data: Data from LLM
-        
+
     Returns:
         Dict[str, Any]: Parsed data from LLM
     """
