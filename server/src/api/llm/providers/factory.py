@@ -20,11 +20,12 @@ class ProviderFactory:
     }
     
     @classmethod
-    def get_provider(cls, provider_name: str) -> BaseProvider:
+    def get_provider(cls, provider_name: str, timeout: float = None) -> BaseProvider:
         """Get a provider instance by name.
         
         Args:
             provider_name: Name of the provider
+            timeout: Optional timeout in seconds. If not provided, uses provider default.
             
         Returns:
             BaseProvider: Provider instance
@@ -37,7 +38,11 @@ class ProviderFactory:
             supported = ", ".join(cls._providers.keys())
             raise ValueError(f"Unsupported provider: {provider_name}. Supported providers: {supported}")
         
-        return provider_class()
+        # Pass timeout if provided, otherwise use default
+        if timeout is not None:
+            return provider_class(timeout=timeout)
+        else:
+            return provider_class()
     
     @classmethod
     def register_provider(cls, name: str, provider_class: Type[BaseProvider]) -> None:

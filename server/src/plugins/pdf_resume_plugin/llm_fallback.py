@@ -43,8 +43,10 @@ async def parse_with_llm(
         # Create prompt for LLM
         prompt = create_llm_prompt(truncated_text, direct_extraction_data)
         
-        # Get LLM provider
-        provider = ProviderFactory.get_provider(provider_name)
+        # Get LLM provider with appropriate timeout
+        from src.config.settings import settings
+        timeout = settings.llm_timeout  # Use general LLM timeout for PDF parsing
+        provider = ProviderFactory.get_provider(provider_name, timeout=float(timeout))
         
         # Create request. For Anthropic, place system as a separate param by putting it last.
         request = {

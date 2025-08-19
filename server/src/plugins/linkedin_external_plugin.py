@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import time
 
 from src.utils.logging import get_structured_logger
+from src.utils.timing import PerformanceTracker
 
 from src.core.plugin_system.plugin_interface import Plugin, PluginRequest, PluginResponse, PluginMetadata
 from src.core.external_mcp.external_mcp_client import ExternalMCPClient
@@ -265,8 +266,13 @@ class LinkedInExternalPlugin(Plugin):
         - "scrape_profile", "get_profile", "profile" for profiles
         - "scrape_company", "get_company", "company" for companies
         """
+        # Create performance tracker for this operation
+        tracker = PerformanceTracker("linkedin_scrape")
+        
         if not self.mcp_client:
             logger.error("Plugin not initialized - MCP client is None")
+            tracker.add_metadata(status="error", error="not_initialized")
+            tracker.log_summary(logger)
             return PluginResponse(
                 request_id=request.request_id,
                 status="error",
@@ -294,15 +300,19 @@ class LinkedInExternalPlugin(Plugin):
             # Check if server is healthy
             logger.debug("Performing health check on LinkedIn MCP server")
             logger.debug("Performing health check on LinkedIn MCP server...")
+            health_check_start = tracker.record_phase_start("health_check")
             health_check_result = await self.mcp_client.health_check()
+            tracker.record_phase_end("health_check", health_check_start)
             logger.debug(f"LinkedIn MCP server health check result: {health_check_result}")
             logger.debug(f"LinkedIn MCP server health check result: {health_check_result}")
             
             if not health_check_result:
                 logger.warning("LinkedIn MCP server health check failed, attempting restart")
+                restart_start = tracker.record_phase_start("server_restart")
                 if self.process_manager:
                     await self.process_manager.restart()
                 await self.mcp_client.initialize_session()
+                tracker.record_phase_end("server_restart", restart_start)
                 logger.info("LinkedIn MCP server restarted and session initialized")
             
             # Determine the tool to call and arguments based on request
@@ -382,9 +392,23 @@ class LinkedInExternalPlugin(Plugin):
                     "Could not determine scraping type. Provide 'action', 'url', 'linkedin_username', or 'company_name'"
                 )
             
+            # Add metadata about the operation
+            if tool_name == "get_person_profile":
+                tracker.add_metadata(
+                    operation_type="profile",
+                    username=tool_args.get("linkedin_username", "unknown")
+                )
+            elif tool_name == "get_company_profile":
+                tracker.add_metadata(
+                    operation_type="company",
+                    company=tool_args.get("company_name", "unknown")
+                )
+            
             # Verify tool is allowed
             if tool_name not in self.allowed_tools:
                 logger.error(f"Tool '{tool_name}' is not allowed")
+                tracker.add_metadata(status="error", error="tool_not_allowed")
+                tracker.log_summary(logger)
                 return PluginResponse(
                     request_id=request.request_id,
                     status="error",
@@ -395,7 +419,9 @@ class LinkedInExternalPlugin(Plugin):
             logger.debug(f"Starting tool call at {time.time()}")
             
             # Delegate to external server for actual LinkedIn API interaction
-            response = await self.mcp_client.call_tool(tool_name, tool_args)
+            scraping_start = tracker.record_phase_start("scraping")
+            response = await self.mcp_client.call_tool(tool_name, tool_args, tracker)
+            tracker.record_phase_end("scraping", scraping_start)
             logger.debug(f"Completed tool call at {time.time()}")
             logger.debug(f"Response is error: {response.isError}")
             
@@ -406,6 +432,8 @@ class LinkedInExternalPlugin(Plugin):
                         error_text += content.get("text", "")
                 
                 logger.error(f"External MCP error: {error_text}")
+                tracker.add_metadata(status="error", error="mcp_error", error_detail=error_text[:100])
+                tracker.log_summary(logger)
                 return PluginResponse(
                     request_id=request.request_id,
                     status="error",
@@ -413,6 +441,7 @@ class LinkedInExternalPlugin(Plugin):
                 )
             
             # Extract data from response
+            data_extraction_start = tracker.record_phase_start("data_extraction")
             data = None
             for content in response.content:
                 if content.get("type") == "text":
@@ -430,6 +459,17 @@ class LinkedInExternalPlugin(Plugin):
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON data: {e}")
                     pass
+            
+            tracker.record_phase_end("data_extraction", data_extraction_start)
+            
+            # Add final metadata
+            tracker.add_metadata(
+                status="success",
+                data_size=len(str(data)) if data else 0
+            )
+            
+            # Log the comprehensive performance summary
+            tracker.log_summary(logger)
 
             logger.info(f"LinkedIn plugin returning successful response with data length: {len(str(data)) if data else 0}")
             return PluginResponse(
@@ -445,6 +485,8 @@ class LinkedInExternalPlugin(Plugin):
             
         except ValidationError as e:
             logger.error("Validation error during LinkedIn scraping", error=str(e))
+            tracker.add_metadata(status="error", error="validation_error", error_detail=str(e))
+            tracker.log_summary(logger)
             return PluginResponse(
                 request_id=request.request_id,
                 status="error",
@@ -453,6 +495,8 @@ class LinkedInExternalPlugin(Plugin):
         except Exception as e:
             logger.error("Error calling external MCP server", error=str(e), error_type=type(e).__name__)
             error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+            tracker.add_metadata(status="error", error="exception", error_type=type(e).__name__)
+            tracker.log_summary(logger)
             return PluginResponse(
                 request_id=request.request_id,
                 status="error",

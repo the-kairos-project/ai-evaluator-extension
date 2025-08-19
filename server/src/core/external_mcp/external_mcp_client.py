@@ -454,7 +454,8 @@ class ExternalMCPClient:
     async def call_tool(
         self,
         tool_name: str,
-        arguments: Dict[str, Any]
+        arguments: Dict[str, Any],
+        tracker: Optional['PerformanceTracker'] = None
     ) -> MCPToolResponse:
         """Call a tool on the external MCP server.
         
@@ -471,7 +472,11 @@ class ExternalMCPClient:
             MCPProtocolError: If protocol error occurs
         """
         if not self.initialized:
+            if tracker:
+                init_start = tracker.record_phase_start("mcp_init")
             await self.initialize_session()
+            if tracker:
+                tracker.record_phase_end("mcp_init", init_start)
             
         request_data = self._build_tool_request(tool_name, arguments)
         
@@ -484,7 +489,15 @@ class ExternalMCPClient:
                 max_attempts=self.max_retries
             )
             
+            if tracker and attempt == 1:
+                # Only track timing for the first attempt
+                network_start = tracker.record_phase_start("mcp_network")
+            
             result = await self._execute_tool_call(tool_name, request_data, attempt)
+            
+            if tracker and attempt == 1 and result is not None:
+                tracker.record_phase_end("mcp_network", network_start)
+            
             if result is not None:
                 return result
                 

@@ -38,7 +38,10 @@ async def proxy_openai(
         Dict[str, Any]: OpenAI API response
     """
     try:
-        provider = ProviderFactory.get_provider("openai")
+        from src.config.settings import settings
+        # Use OpenAI-specific timeout if available, otherwise use general LLM timeout
+        timeout = settings.openai_timeout if settings.openai_timeout else settings.llm_timeout
+        provider = ProviderFactory.get_provider("openai", timeout=float(timeout))
         
         payload = {
             "model": request.model,
@@ -84,7 +87,10 @@ async def proxy_anthropic(
         Dict[str, Any]: Anthropic API response
     """
     try:
-        provider = ProviderFactory.get_provider("anthropic")
+        from src.config.settings import settings
+        # Use general LLM timeout for Anthropic (no specific anthropic_timeout in settings)
+        timeout = settings.llm_timeout
+        provider = ProviderFactory.get_provider("anthropic", timeout=float(timeout))
         
         payload = {
             "model": request.model,
@@ -259,17 +265,24 @@ async def evaluate_applicant(
             use_multi_axis=request.use_multi_axis
         )
         
+        from src.config.settings import settings
+        
         try:
-            provider = ProviderFactory.get_provider(request.provider)
-            logger.debug(f"Using provider: {provider.name}")
+            # Determine timeout based on provider
+            if request.provider == "openai":
+                timeout = settings.openai_timeout if settings.openai_timeout else settings.llm_timeout
+            else:
+                # For anthropic and other providers, use general LLM timeout
+                timeout = settings.llm_timeout
+            
+            provider = ProviderFactory.get_provider(request.provider, timeout=float(timeout))
+            logger.debug(f"Using provider: {provider.name} with timeout: {timeout}s")
         except ValueError:
             logger.error(f"Invalid provider in evaluation request: {request.provider}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid provider: {request.provider}"
             )
-        
-        from src.config.settings import settings
         
         max_tokens = 4096  # Default fallback
         if request.provider == "openai":

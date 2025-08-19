@@ -197,7 +197,7 @@ class BaseProvider(ABC):
             headers = await self.prepare_headers(request)
             api_url = await self.get_api_url()
             
-            logger.info(f"Calling {self.name} API with model {request.model}")
+            logger.info(f"Calling {self.name} API with model {request.model}, timeout: {self.timeout}s")
             logger.debug(f"API URL: {api_url}")
             logger.debug(f"Request payload: {payload}")
             
@@ -269,8 +269,18 @@ class BaseProvider(ABC):
                 detail=detail
             )
         except httpx.TimeoutException as e:
-            # Timeout errors
-            logger.error(f"{self.name} API timeout: {str(e)}")
+            # Timeout errors - log more details
+            duration = time.time() - start_time
+            logger.error(
+                f"{self.name} API timeout after {duration:.2f}s (configured timeout: {self.timeout}s): {str(e)}",
+                extra={
+                    "provider": self.name,
+                    "model": request.model,
+                    "configured_timeout": self.timeout,
+                    "actual_duration": duration,
+                    "error_type": type(e).__name__
+                }
+            )
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail=f"{self.name.capitalize()} API request timed out after {self.timeout}s. Please try again later."

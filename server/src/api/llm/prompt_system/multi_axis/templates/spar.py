@@ -7,13 +7,14 @@ dimensions relevant to AI safety research and policy.
 
 from ..base import MultiAxisTemplate, AxisTemplate
 
-# General Promise axis
 GENERAL_PROMISE_AXIS = AxisTemplate(
     name="General Promise",
     description="Overall fit and potential for success in the SPAR research program",
     ranking_keyword="GENERAL_PROMISE_RATING",
     prompt_section="""## General Promise
-This criterion measures the candidate’s overall fit and potential for success in the SPAR research program, an AI safety and policy research program, based on their relevant technical or policy background, motivation, and concrete track record. Prioritize demonstrated achievements over abstract statements or general knowledge. Note that “AI safety” refers to the mitigation of risks, particularly large-scale or catastrophic, from advanced AI.
+This criterion measures the candidate's overall fit and potential for success in the SPAR research program, an AI safety and policy research program, based on their relevant technical or policy background, motivation, and concrete track record. Prioritize demonstrated achievements over abstract statements or general knowledge.
+
+Note that "AI safety" refers to the mitigation of risks, particularly large-scale or catastrophic, from advanced AI (think AGI or ASI), including but not limited to, loss of control risks, catastrophic misuse risks, risks from digital minds, large-scale unemployment, and AI-assisted coups. SPAR offers a diverse set of projects across AI safety, security and policy, but they all have theories of change related to these risks.
 
 What to Look For:
 
@@ -21,37 +22,68 @@ What to Look For:
   * Advanced, relevant degrees (e.g., ML/CS PhD, technical MSc, or policy-related MA/PhD)
   * Strong mathematical, research, or programming skills.
   * Strong policy research skills, or strong skills from adjacent fields (public policy, law, international relations, economics, etc.)
+  * Cybersecurity skills, especially those relevant to AI security: Securing model weights at frontier labs, evaluating cyber offense-defense capabilities, or working on compute governance (for example, hardware-enabled guarantees.
+  * Experience with areas relevant to large-scale misuse risks from AI (particularly CBRN and cyber).
+  * Studies at a top university, especially in the top #100 worldwide.
 * Experience specific to AI safety
-  * Participation in major research programs (e.g., MATS, ARENA, MLAB, GovAI, IAPS Fellowship)
-  * Participation in introductory research programs (e.g., SPAR, AI Safety Camp, or ERA)
-  * Participation in introductory courses (e.g., AI Safety Fundamentals or CAIS’s AI Safety, Ethics, and Society)
-  * Short self-guided introductions to AI safety (e.g, Future of AI by BlueDot or the Stampy project) or consumption of AI safety videos, articles, or newsletters (e.g., AI 2027 report, the CAIS newsletter, or a Rob Miles video)
+  * Participation in highly selective research programs (e.g., MATS, GovAI, RAND TASP, Horizon, or the IAPS Fellowship)
+  * Participation in introductory research programs (e.g., SPAR, AI Safety Camp, MARS, Pivotal Fellowship, Future Impact Group, or ERA)
+  * Participation in ML upskilling programs (e.g. ARENA and MLAB)
+  * Participation in introductory courses or fellowships (e.g., Bluedot's AI Safety Fundamentals, or CAIS's AI Safety, Ethics, and Society, both of which are ~8-14 weeks). Note that many groups around the world run reading groups based on BlueDot's AISF curriculum (formerly known as AGISF), these should be counted similarly.
+  * Short self-guided introductions to AI safety (e.g, Future of AI by BlueDot, which is two hours) or consumption of AI safety videos, articles, or newsletters (e.g., the AI 2027 report, the CAIS newsletter, LessWrong posts, or a Rob Miles video)
   * Independent research or significant project output.
 * Research/Publication Record:
   * Quantity, quality, and notability of research outputs (papers, blogs, open-source projects).
 * Professional Experience:
-  * Substantial work at relevant organizations (industry, academia, policy/governance).
+  * Substantial work at relevant organizations (industry, academia, civil society, government).
 * Red Flags:
   * Generic, vague, or obviously AI-generated answers.
-  * “Troll” applications (irrelevant, unserious, or copy-paste responses).
-
-Red Flags:
-- Generic, vague, or obviously AI-generated answers.
-- "Troll" applications (irrelevant, unserious, or copy-paste responses).
-
+  * "Troll" applications (irrelevant, unserious, or copy-paste responses).
+  * Responses that suggest the candidate does not care or is dismissive about existential or catastrophic risks or large-scale societal impacts from advanced AI.
 
 **Scoring Guide (1-5):**
 
-* **1 — No meaningful engagement.** Generic responses, major technical errors, or irrelevant background.
-* **2 — Basic foundation** (e.g., completed an intro course or self-study, but no real application or outputs).
-* **3 — Demonstrated engagement:** completed technical courses, produced concrete outputs (blog posts, small projects, or detailed analysis), and shows technical/mathematical strength.
-* **4 — Established track record:** completed substantial research projects, published analyses or code, implemented algorithms, or contributed to major policy research projects.
-* **5 — Significant expertise:** led or authored notable published research, demonstrated technical or policy depth, contributed to high-impact projects or teams.
+* **1 — Poor Fit / Red Flags:**
+  * Software engineer with one-sentence answers, no AI safety engagement, applying because "AI is the future"
+  * Copy-pasted generic ChatGPT responses without personal details
+  * Argues AI safety concerns are overblown, should focus only on current bias
+  * Completely unrelated background (sales, hospitality) with no research connection
+  * Joke/troll responses
 
-Focus on specific evidence of achievement or fit for the program, not generic enthusiasm or "what should be done" claims.
-Ignore statements about the world unless clearly tied to the applicant's own work.
+* **2 — Minimal Relevant Background:**
+  * CS undergrad, decent GPA, watched Rob Miles, only standard coursework on CV
+  * Data analyst who took 2-hour Future of AI course, interested but no concrete steps
+  * Recent grad following AI safety Twitter but no technical projects or research
+  * ML engineer treating SPAR as generic ML opportunity
+  * Policy student conflating AI governance with privacy/data protection
+
+* **3 — Solid Foundation with Engagement:**
+  * Strong CS undergrad from top-50 university, completed AISF
+  * Physics PhD with strong math background, starting to learn about AI safety through ARENA
+  * Software engineer (3 years experience), recently completed AISF, genuine interest in transition
+  * Policy researcher at think tank, completed BlueDot governance course
+  * ML master's student with good technical skills, participated in university AI safety reading group
+
+* **4 — Strong Track Record:**
+  * Strong CS undergrad from top-50 university, completed AISF, built interpretability project, active in reading group
+  * Previous SPAR participant with resulting blog post on Alignment Forum
+  * ML engineer at tech company, AI Safety Camp alumnus, working on safety side projects
+  * Policy PhD on AI governance, published relevant papers, completed governance fellowship
+  * Ex-quant (3 years), MARS graduate, actively transitioning to safety
+
+* **5 — Exceptional Candidate:**
+  * MATS graduate, NeurIPS paper on interpretability, Anthropic offers
+  * GovAI Fellow, lead author on influential governance paper, UK AISI researcher
+  * ML PhD from top-5, 3 ICML/NeurIPS papers, DeepMind safety internship
+  * Former OpenAI safety researcher (2 years), led scalable oversight project
+  * Senior policy advisor on AI chip controls, RAND TASP alumnus
+
+**Notes:**
+- Focus on specific evidence of achievement or fit for the program, not generic enthusiasm or "what should be done" claims.
+- Ignore statements about the world unless clearly tied to the applicant's own work.
+- Consider: Would a top AI safety researcher be excited to mentor this person?
+
 Before giving your score, explain your reasoning step by step.
-
 Provide your analysis and then state '{ranking_keyword} = ' followed by an integer from 1-5."""
 )
 
@@ -61,19 +93,14 @@ ML_SKILLS_AXIS = AxisTemplate(
     description="Practical and theoretical machine learning expertise",
     ranking_keyword="ML_SKILLS_RATING",
     prompt_section="""## ML Skills
-This criterion evaluates the candidate’s practical and theoretical machine learning expertise, including implementation, mathematical understanding, and applied work. Consider both classic and deep learning, coding skills, and breadth/depth of experience.
+This criterion evaluates the candidate's practical and theoretical machine learning expertise, including implementation, mathematical understanding, and applied work. Consider both classic and deep learning, coding skills, and breadth/depth of experience.
 
 **What to look for:**
-
-* Hands-on experience designing and training ML models, especially transformers or other foundation models (e.g., coding and training an LLM, doing mechanistic interpretability on a vision model or replicating an ML safety paper)
-
+* Hands-on experience designing and training ML models, especially transformers or other foundation models
 * Completed courses or degrees in ML, AI, statistics, or related fields
-
-* Contributions to ML research projects (including ML Safety or interpretability projects), competition prizes (Kaggle, DrivenData, etc.), or significant contributions to ML open-source repositories
-
-* Published research or technical reports in ML (either as a pre-print or in a journal)
-
-* Demonstrated strong understanding of ML and Deep Learning concepts
+* Contributions to ML research projects, competition prizes, or ML open-source repositories
+* Published research or technical reports in ML
+* Demonstrated understanding of ML and Deep Learning concepts
 
 **Scoring Guide (1–5):**
 
@@ -81,19 +108,79 @@ This criterion evaluates the candidate’s practical and theoretical machine lea
     No relevant coursework, projects, or practical work in ML.
 
 * **2 — Basic ML Foundation:**
-    Has completed an intro ML or AI class (online or university), but little or no hands-on application.
+    Completed intro ML/AI class (online or university), but little hands-on application.
+    Can explain basic concepts (regression, classification) but no real projects.
 
 * **3 — Demonstrated Application:**
-    Has built, trained, and evaluated basic or toy ML models (e.g., coded and trained basic transformer)—has some real-world or coursework projects.
+    Built and trained models beyond sklearn tutorials (e.g., fine-tuned a pretrained model, implemented a paper)
+    Has real coursework projects or personal experiments with neural networks
+    Understands core DL concepts (backprop, architectures, training dynamics)
 
 * **4 — Advanced Practical Experience:**
-    Has contributed to several substantial ML research projects, published ML pre-prints or papers, or won ML competitions (Kaggle, etc.)
+    Multiple substantial ML projects with evidence of iteration and debugging
+    Published ML papers/pre-prints OR won ML competitions OR significant OS contributions to libraries relevant to ML (e.g. nnsight)
+    Can implement papers from scratch, debug training issues, optimize performance
+    Industry ML experience or research lab involvement
 
 * **5 — ML Expertise:**
-    Has published at a top ML conference/journal (e.g. ICML or NeurIPS), substantially contributed to major open-source ML libraries (e.g. pytorch or nnsight) ; or has significant, innovative ML engineering experience at a top-tier company or research lab (e.g. Google DeepMind or Nvidia).
-
+    Published at top venues (NeurIPS, ICML, ICLR) as key author
+    Major contributions to widely-used ML libraries (PyTorch, HuggingFace, etc.)
+    Senior ML role at top-tier company or a non-senior ML role at a frontier AI lab
+    Demonstrated novel research contributions or breakthrough implementations
 
 Focus on specific ML achievements and concrete experience.
+Before giving your score, explain your reasoning step by step.
+
+Provide your analysis and then state '{ranking_keyword} = ' followed by an integer from 1-5."""
+)
+
+# Software Engineering axis - SUGGESTED IMPROVEMENTS
+SOFTWARE_ENGINEERING_AXIS = AxisTemplate(
+    name="Software Engineering Skills",
+    description="Software engineering ability, especially in Python and ML frameworks",
+    ranking_keyword="SOFTWARE_ENGINEERING_RATING",
+    prompt_section="""## Software Engineering Skills
+This axis measures software engineering ability, with emphasis on Python and ML frameworks (PyTorch, TensorFlow, JAX). Strong general SWE experience can compensate for less ML-specific experience.
+
+**What to look for:**
+* Python proficiency - not just notebooks but proper software engineering
+* Experience with ML frameworks and infrastructure
+* Evidence of having worked on production-quality code (testing, documentation, maintainability)
+* Real-world software engineering experience
+* Good engineering practices (git, code review, debugging complex systems, CI/CD)
+
+**Scoring Guide (1–5):**
+
+* **1 — Minimal Software Experience:**
+    Little or no coding beyond basic scripts or homework.
+
+* **2 — Basic Python Scripting:**
+    Can write Python scripts/notebooks for analysis
+    Completed intro programming courses
+    Limited experience with software engineering practices
+
+* **3 — Practical Coding Experience:**
+    Built Python projects beyond coursework (web apps, tools, data pipelines)
+    Comfortable with git, debugging, package management
+    Some experience with ML frameworks (even if just for learning)
+    Internship-level experience OR significant open-source contributions
+
+* **4 — Professional Engineering Experience:**
+    Full-time SWE role (1+ years) OR extensive ML engineering experience
+    Can architect systems, not just implement features
+    Proficient with ML infrastructure (training pipelines, model serving)
+    Writes maintainable, well-tested code
+
+* **5 — Expert Software/ML Engineer:**
+    Senior/Staff engineer at recognized company, or a non-senior software engineer at a FAANG or FAANG-equivalent companies of 3+ years
+    Led significant technical projects or teams
+    Deep expertise in Python/ML tooling ecosystem
+    Major open-source maintainer or core contributor
+    Can debug and optimize complex ML systems
+
+**Note:** Strong SWE without ML experience can still score 4+ if engineering skills are excellent.
+
+Focus on code quality and engineering maturity, not just years of experience.
 Before giving your score, explain your reasoning step by step.
 
 Provide your analysis and then state '{ranking_keyword} = ' followed by an integer from 1-5."""
@@ -192,38 +279,101 @@ AI_SAFETY_UNDERSTANDING_AXIS = AxisTemplate(
     description="Depth of understanding of technical AI safety concepts and research",
     ranking_keyword="AI_SAFETY_UNDERSTANDING_RATING",
     prompt_section="""## Understanding of AI Safety
-This criterion evaluates the candidate’s depth of understanding of technical AI safety—specifically, issues related to AI alignment, interpretability, and existential risks from advanced AI systems. Only technical AI safety knowledge should be counted here; general AI ethics, fairness, privacy, or regulatory work does *not* qualify unless it is strictly related to existential risks from AI.
+This criterion evaluates the candidate's depth of understanding of technical AI safety—specifically, issues related to AI alignment, interpretability, and existential risks from advanced AI systems. Only technical AI safety knowledge should be counted here; general AI ethics, fairness, privacy, or regulatory work does NOT qualify unless strictly related to existential risks from AI.
 
-**What to look for:**
+**What You Can Actually Observe in SPAR Applications:**
 
-* Knowledge of core concepts in technical AI safety (e.g., alignment, value learning, robustness, interpretability, existential risk)
+* **From "How have you engaged with AI safety?":**
+  * Specific programs, courses, or resources mentioned (and level of detail)
+  * Whether they name specific research agendas, papers, or researchers
+  * How they characterize their engagement (passive consumption vs. active participation)
+  * Use of terminology - correct, incorrect, or generic
 
-* Ability to discuss current technical research agendas, methodologies, and risks
+* **From "Career interests/study plans" and "How SPAR contributes":**
+  * Whether they connect SPAR to specific AI safety problems or research areas
+  * Specificity about which aspects of AI safety they want to work on
+  * Whether they conflate AI safety with AI ethics/bias/fairness
+  * Level of concreteness about safety-relevant goals
 
-* Participation in technical AI safety projects, open-source contributions, or research
+* **From CV/LinkedIn:**
+  * AI safety-relevant projects, papers, or blog posts
+  * Courses taken (distinguishing AI safety from general ML/AI ethics)
+  * Research experience with safety-adjacent topics
+  * Participation in safety programs or communities
+  * Any published work where you can verify understanding quality
 
-* Authorship or significant contributions to AI safety papers, blog posts, or reports
+* **From "Relevant skills" section:**
+  * Whether they highlight safety-specific techniques (interpretability, adversarial training, etc.)
+  * How they frame their ML/policy skills relative to safety
+  * Mention of implementing safety-relevant methods
 
-* *Exclude* work that is solely about AI ethics, fairness, privacy, or governance unless it is clearly and directly relevant to addressing risks from advanced AI.
+**Red Flags Indicating Confusion:**
+* Conflates AI safety with traditional AI ethics/bias/fairness
+* Only discusses near-term ML safety issues (robustness, adversarial examples) without connection to AGI/TAI risks
+* Repeats surface-level talking points without deeper comprehension
+* Misuses technical terms or makes conceptual errors
 
-**Scoring Guide (1–5):**
+**Scoring Guide (1-5):**
 
-* **1 — No core understanding of AI safety:**
-    No evidence of understanding technical AI safety; may mention general ML or vague ethics/morals/discrimination topics.
+* **1 — No Evidence of AI Safety Understanding:**
+  **Example profiles:**
+  * ML engineer whose "AI safety engagement" discusses making models more accurate and less biased against minorities
+  * Undergraduate who lists "AI Ethics" course focused on facial recognition bias and algorithmic fairness
+  * Application mentions being concerned about "AI taking jobs" or "privacy violations" as main safety concerns
+  * Career interests focus on "responsible AI deployment" but only discusses current model limitations, not advanced AI risks
+  * Empty or irrelevant response to "How have you engaged with AI safety?" (e.g., "I haven't yet" or "I use ChatGPT safely")
 
-* **2 — Casual Awareness:**
-    Has consumed basic content (e.g., watched videos by Rob Miles, read AI 2027 or has kept up with relevant newsletters) but would not typically be able to articulate specific technical concepts or agendas. Might have taken a very short introductory course to AI safety, like the Future of AI course by BlueDot Impact (which is 2 hours).
+* **2 — Minimal Exposure, Understanding Unclear:**
+  **Example profiles:**
+  * Says they've "watched Rob Miles videos and read about alignment on LessWrong" but provides no specifics
+  * Completed 2-hour Future of AI course, mentions worries about "transformative AI" or "large-scale misuse"
+  * Software developer who recently discovered AI safety, follows newsletters, but CV shows no related projects or deeper engagement
+  * States "I'm concerned about AGI alignment" but career interests remain focused on general ML applications
+  * Lists "The Alignment Problem" or "Superintelligence" in interests but no evidence of applying concepts
 
-* **3 — Engaged Understanding:**
-    Can explain particular technical research agendas or approaches they find important, with clear reasoning; demonstrates meaningful engagement with technical safety topics. Might have taken a relatively long introductory course to AI safety, like AI Safety Fundamentals (which is 8 weeks).
+* **3 — Clear Engagement, Likely Foundational Understanding:**
+  **Example profiles:**
+  * Completed 8-week AISF course, participates in local AI safety reading group, CV shows end of AISF project on "Literature review on improvements to RLHF"
+  * Undergrad which in their career interests, specifically mentions wanting to work on "mechanistic interpretability to understand model deception"
+  * Policy student who writes about "verification regimes for frontier models" and completed governance-focused AISF track
+  * Person that has been casually engaged with AI Safety through LessWrong for several years and now wants to pivot their career into it
 
-* **4 — Practical Involvement:**
-    Has worked on a project in technical AI safety, published minor articles or posts coherently discussing AI safety, or made minor contributions to research efforts directly related to AI alignment, policy or safety. May have participated in a program like SPAR, MARS, or AI Safety Camp in the past.
+* **4 — Strong Evidence of Technical Understanding:**
+  **Example profiles:**
+  * SPAR alumnus whose CV includes "Research on activation steering methods with [known safety researcher]"
+  * Data scientist who completed ARENA, blog post on "Reproducing key results from the goal misgeneralization paper"
+  * Engagement describes "contributing to the open-source library for SAE interpretability research"
+  * ML engineer who completed AI Safety Camp, published technical blog post on "Implementing debate as an alignment strategy"
+  * GitHub shows multiple repos implementing safety papers (e.g., "my implementation of influence functions for attribution")
 
-* **5 — Expert Level:**
-    Has authored technical papers or substantial blog posts on AI safety; would be capable of working on a technical safety team at a top lab (DeepMind, OpenAI, Anthropic, etc.) or a relevant AI safety org (e.g., METR, ARC, MIRI, Redwood Research, etc); can discuss and critique methods at a high level. May have participated in a selective research program like MATS or GovAI.
+* **5 — Advanced Engagement:**
+  **Example profiles:**
+  * MATS graduate with paper "Discovering Deceptive Behaviors in Language Models" on arXiv, cited by other researchers
+  * Current role: "Research Engineer at Redwood Research working on adversarial training"
+  * GovAI Fellow whose publications include "Compute Governance Mechanisms for Frontier AI" in policy journal
+  * Career interests discuss "bridging the gap between prosaic alignment and agent foundations" with specific and coherent technical proposals
+  * CV shows progression: AISF → MARS → research internship at Anthropic
 
-Focus on technical AI safety/AI alignment experience and understanding only; do not count general ethics, privacy, or governance work.
+**Key Indicators to Watch For:**
+
+* **Terminology usage in limited text:**
+  * Red flag: Confusing "AI safety" with "AI ethics/bias"
+  * Yellow flag: Only surface-level use of terms without context
+  * Green flag: Specific technical concepts used appropriately
+
+* **Specificity in "How does SPAR contribute?":**
+  * Weak: "To learn about AI safety"
+  * Strong: "To investigate whether reward hacking persists in RLHF fine-tuned models" or "to obtain career capital to work on CBRN AI evaluations"
+
+**Important Evaluation Notes:**
+- You're inferring from limited information - be conservative when uncertain
+- Weight verifiable CV items more than self-descriptions
+- If someone has strong safety engagement but poor articulation, consider that the application format doesn't test understanding directly
+- Distinguish between "took an ML course that mentioned safety" and "took a course specifically on AI safety"
+- If they link to work (GitHub, blog, papers), that can provide much stronger signal
+
+Focus on observable proxies: what they've done, what they've produced, and whether they make obvious errors in the limited text they provide.
+
 Before giving your score, explain your reasoning step by step.
 
 Provide your analysis and then state '{ranking_keyword} = ' followed by an integer from 1-5."""
@@ -235,43 +385,51 @@ PATH_TO_IMPACT_AXIS = AxisTemplate(
     description="Likelihood of making meaningful contributions to technical AI safety",
     ranking_keyword="PATH_TO_IMPACT_RATING",
     prompt_section="""## Path to Impact
-This criterion assesses the likelihood that the candidate will make a significant, long-term contribution to AI safety, based on their stated plans, concrete actions, and demonstrated commitment. The focus is on technical AI safety, AI policy related to existential risks from AI, or direct support roles to AI safety efforts—not general AI ethics, governance, or ML work.
+This criterion assesses the likelihood that the candidate will make a significant, long-term contribution to AI safety, based on their demonstrated commitment, concrete actions taken, and career trajectory. Focus on commitment to technical AI safety, AI security, or AI policy related to catastrophic risks—not general AI ethics or ML work.
 
-**What to look for:**
-
-* Clear, explicit intentions to pursue a career in AI safety or AI policy relevant to existential risks from AI (or adjacent highly technical support roles)
-
-* Concrete plans: mentions of specific programs, companies, or research groups they aim to join
-
-* Evidence of taking active steps towards a career shift (e.g., self-study, job applications, networking)
-
-* Already working in technical AI safety or a senior supporting role (e.g., managing a technical AI safety team, or doing large-scale grantmaking for AI safety)
-
-* In general, indicators that suggest the person is likely to make a significant contribution to the field. For example, the person might be particularly agentic or accomplished, or might have studied at a top university.
-
-* *Do not count* general ML, AI ethics/governance, or “safety consciousness” in generic ML roles, unless the person is clearly mission-aligned with reducing risks from advanced AI.
-
-**Scoring Guide (1–5):**
+**Scoring Guide (1-5):**
 
 * **1 — No Path Toward AI Safety:**
-    Actively states no intention to work on AI safety or AI policy. Only interested as a side topic, or plans to remain in unrelated fields (e.g., generic data science/software engineering/ML roles).
+  * Explicitly states no intention to work on AI safety professionally
+  * ML engineer using SPAR for general career advancement
+  * Plans to stay in unrelated field (generic SWE, data science)
+  * Only interested as a side topic or hobby
 
-* **2 — Vague or Indecisive Plan:**
-    Considers AI safety as one option among many, or has a loosely defined career plan to “maybe” get into AI safety. No specific steps or commitments shown.
+* **2 — Exploratory Interest:**
+  * "AI safety is one option I'm considering among others"
+  * Curious about the field but no concrete steps taken
+  * Career plan mentions "maybe transitioning eventually"
+  * Treating SPAR as exploration without commitment
+  * No specific orgs or roles identified
 
-* **3 — Clear, Concrete Plan:**
-    Has a well-defined plan to pursue AI safety or AI policy—names specific organizations, programs, or research groups they want to join. Seems to care about existential or catastrophic risks from AI in particular. Seems reasonably talented.
+* **3 — Clear Commitment:**
+  * "AI safety is my primary career focus going forward"
+  * Names specific orgs/programs as next steps (MATS, Anthropic, Redwood)
+  * 3+ months of self-study (courses, papers, projects)
+  * Active in AI safety community/events
+  * Has realistic timeline: "Applying to X after finishing Y"
 
 * **4 — Active Transition:**
-    Has already taken substantial, tangible steps towards an AI safety career (e.g., participated in a research program like MATS, SPAR, ERA, GovAI, or AI Safety Camp, done safety-related internships, etc). Seems like quite promising talent.
+  * Already applied to AI safety orgs/programs
+  * Previous SPAR/MARS/AI Safety Camp participant continuing the path
+  * Left previous career to focus on safety transition
+  * Graduate student with published AI safety research
+  * Created substantial safety content (research, code, blogs)
+  * 6+ months consistent engagement with concrete outputs
 
-* **5 — Already in Technical AI Safety, AI Policy, or Supporting Senior Role:**
-    Currently works on technical AI safety at an impactful organization (either an AI safety org, like METR, MIRI, or Redwood Research, or a frontier lab), works on x-risk relevant AI policy at an important think tank or government institute (like the European Commission, the UK AISI, CNA,S or RAND), or has a senior role supporting fieldbuilding efforts at a mission-aligned organization (e.g,. BlueDot, MATS, GovAI, 80,000 hours).
-    *Note:* Working on general ML/AI ethics/governance does **not** count.
+* **5 — Already Contributing:**
+  * Currently in AI safety role (even junior/intern)
+  * Working on x-risk policy at government/think tank
+  * PhD with safety-focused advisor and clear post-grad plans
+  * Completed MATS/GovAI with upcoming safety position
+  * Senior role enabling safety work (grantmaking, program management)
 
+**Quick Indicators:**
+* Strong: Specific technical areas identified ("mechanistic interpretability at Anthropic")
+* Weak: "Interested in beneficial AI"
+* Weak: Only mentions general ML/AI ethics roles
 
-Focus only on career trajectories or roles relevant to reducing catastrophic risks from advanced AI. Don’t weigh adjacent ML or AI ethics experience.
-Before giving your score, explain your reasoning step by step.
+**Note:** Focus on commitment and actions, not talent (covered in other axes). Career pivots take time—credit meaningful progress.
 
 Provide your analysis and then state '{ranking_keyword} = ' followed by an integer from 1-5."""
 )

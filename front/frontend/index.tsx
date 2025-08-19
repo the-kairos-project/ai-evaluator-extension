@@ -1,10 +1,14 @@
-import type { IconName } from '@airtable/blocks/dist/types/src/ui/icon_config';
-import { Icon, initializeBlock, loadScriptFromURLAsync } from '@airtable/blocks/ui';
-import { Tab } from '@headlessui/react';
-import React, { Fragment, useState } from 'react';
-import { MainPage } from './MainPage';
-import { PresetManager } from './components/PresetManager';
-import { SettingsDialog } from './components/SettingsDialog';
+import type { IconName } from "@airtable/blocks/dist/types/src/ui/icon_config";
+import {
+  Icon,
+  initializeBlock,
+  loadScriptFromURLAsync,
+} from "@airtable/blocks/ui";
+import { Tab } from "@headlessui/react";
+import React, { Fragment, useState } from "react";
+import { MainPage } from "./MainPage";
+import { PresetManager } from "./components/PresetManager";
+import { SettingsDialog } from "./components/SettingsDialog";
 
 const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
   return (
@@ -12,7 +16,7 @@ const MyTabLink = ({ icon, label }: { icon: IconName; label: string }) => {
       {({ selected }) => (
         <button
           type="button"
-          className={`flex px-2 py-1 ${selected ? 'text-slate-50' : 'text-slate-400'}`}
+          className={`flex px-2 py-1 ${selected ? "text-slate-50" : "text-slate-400"}`}
         >
           <Icon name={icon} size={16} />
           <span className="ml-1 tracking-widest uppercase text-xs font-medium">
@@ -70,6 +74,6 @@ function App() {
 // Note: The ReactDOM.render warning is coming from Airtable's initializeBlock function
 // We can't easily fix it since it's using the legacy API internally
 // When Airtable updates their SDK, this warning should disappear
-loadScriptFromURLAsync('https://cdn.tailwindcss.com').then(async () => {
+loadScriptFromURLAsync("https://cdn.tailwindcss.com").then(async () => {
   initializeBlock(() => <App />);
 });
