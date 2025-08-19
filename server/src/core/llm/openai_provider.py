@@ -15,12 +15,12 @@ logger = get_structured_logger(__name__)
 class OpenAIProvider(LLMProvider):
     """OpenAI API provider implementation."""
     
-    def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview", **kwargs):
+    def __init__(self, api_key: str, model: str = "gpt-5-mini", **kwargs):
         """Initialize OpenAI provider.
         
         Args:
             api_key: OpenAI API key
-            model: Model to use (default: gpt-4-turbo-preview)
+            model: Model to use (default: gpt-5-mini)
             **kwargs: Additional configuration (base_url, organization, etc.)
         """
         super().__init__(api_key, model, **kwargs)

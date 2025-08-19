@@ -26,7 +26,7 @@ class ModelOption(BaseModel):
     is_available: bool
 
 
-# OpenAI Models (Updated May 2025)
+# OpenAI Models (Updated Aug 2025)
 OPENAI_MODELS = [
     ModelOption(
         label="GPT-4.1",
@@ -36,23 +36,23 @@ OPENAI_MODELS = [
         is_available=True,
     ),
     ModelOption(
-        label="GPT-4o",
-        value="gpt-4o",
-        description="Latest multimodal model with advanced capabilities",
-        emoji="⭐",
+        label="GPT-5",
+        value="gpt-5",
+        description="OpenAI GPT-5 — next-generation flagship model",
+        emoji="⚡",
         is_available=True,
     ),
     ModelOption(
-        label="GPT-4o mini",
-        value="gpt-4o-mini",
-        description="Fast, cost-effective version of GPT-4o",
-        emoji="💡",
+        label="GPT-5 mini",
+        value="gpt-5-mini",
+        description="Compact and fast GPT-5 variant for cost-sensitive use cases",
+        emoji="🟢",
         is_available=True,
     ),
 ]
 
-# Get default OpenAI model (using gpt-4o-mini for cost efficiency)
-DEFAULT_OPENAI_MODEL = OPENAI_MODELS[2].value  # gpt-4o-mini
+# Get default OpenAI model (use the cost-efficient GPT-5 mini)
+DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 
 # Anthropic Models (Updated May 2025)
 ANTHROPIC_MODELS = [

@@ -23,7 +23,7 @@ export interface CostEstimate {
  * @param estimatedInputTokens Average tokens per entry for input
  * @param estimatedOutputTokens Average tokens per entry for output
  * @param numberOfEntries Number of entries to evaluate
- * @param modelId Model identifier (e.g., 'gpt-4o-mini', 'claude-3-5-haiku-20241022')
+ * @param modelId Model identifier (e.g., 'gpt-5-mini', 'claude-3-5-haiku-20241022')
  * @returns Cost estimate with token and cost breakdown
  */
 export const estimateCost = (
